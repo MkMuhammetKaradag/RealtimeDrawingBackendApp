@@ -1,0 +1,59 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, build with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when using LiteIDE
+*.out
+
+# Dependency directories (remove the comment below if youVendor Dosen't commit src)
+# vendor/
+
+# Go workspace file
+.idea/
+.vscode/
+
+# Operating system specific files
+.DS_Store
+ehthumbs.db
+Thumbs.db
+
+# Build results
+/build/
+/dist/
+
+# Environment configuration files
+.env
+.env.local
+.env.*.local
+! .env.example
+! .env.test
+*.txt
+
+# Log files
+*.log
+
+# IDE-specific files
+*.swp
+*~
+*.suo
+*.user
+*.sln.docstates
+
+# GoLand specific
+.idea_modules/
+
+# VS Code specific
+.vscode-server/
+
+# Coverage profil
+coverage.out
+coverage.html
+
+# Local go module cache
+*go.sum # Genellikle commit edilir, ancak bazı durumlarda ignore edilebilir. Proje politikasına bağlı.
