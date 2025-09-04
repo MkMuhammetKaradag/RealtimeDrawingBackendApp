@@ -1,0 +1,8 @@
+app:
+  name: 'auth-service'
+  version: '1.0.0'
+  description: 'test'
+
+server:
+  port: 8081
+  host: 'localhost'
