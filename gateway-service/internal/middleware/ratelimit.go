@@ -15,8 +15,6 @@ type RateLimiter struct {
 	// Global rate limiter
 	globalLimiter *rate.Limiter
 
-	// Per-user rate limiters
-
 	// Service-specific rate limiters
 	serviceLimiters sync.Map
 }
@@ -63,6 +61,12 @@ func (rl *RateLimiter) Middleware() fiber.Handler {
 			}
 		}
 
+		return c.Next()
+	}
+}
+func ServiceName(name string) fiber.Handler {
+	return func(c *fiber.Ctx) error {
+		c.Locals("service_name", name)
 		return c.Next()
 	}
 }

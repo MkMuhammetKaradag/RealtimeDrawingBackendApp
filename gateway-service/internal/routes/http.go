@@ -32,3 +32,21 @@ func RegisterHTTPRoutes(app *fiber.App, rateLimiter *middleware.RateLimiter) {
 		app.All("/"+prefix+"/*", utils.BuildProxyHandler(prefix))
 	}
 }
+
+// RegisterRoutes, tüm HTTP ve WebSocket rotalarını kaydeder.
+func RegisterRoutes(app *fiber.App, rateLimiter *middleware.RateLimiter) {
+
+	// HTTP servisleri için rotaları kaydet
+	for prefix, _ := range config.Services {
+		// Her servise özel bir middleware grubu oluştur
+		// middleware.ServiceName ve rateLimiter.Middleware kullanıldı
+		serviceGroup := app.Group("/"+prefix, middleware.ServiceName(prefix), rateLimiter.Middleware())
+		fmt.Println(serviceGroup)
+		// Gelen tüm HTTP isteklerini ilgili servise yönlendir
+		// utils.BuildProxyHandler kullanıldı
+		serviceGroup.All("/*", utils.BuildProxyHandler(prefix))
+	}
+
+	
+
+}

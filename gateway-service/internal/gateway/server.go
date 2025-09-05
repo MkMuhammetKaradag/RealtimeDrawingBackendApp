@@ -35,14 +35,14 @@ func (gs *GatewayServer) Start(port string) error {
 	app := fiber.New()
 
 	// Global middleware'leri ekle
-	app.Use(logger.New())                         // Loglama middleware'i
-	app.Use(recover.New())                        // Panic recovery middleware'i
-	app.Use(cors.New())                           // CORS middleware'i
-
-
+	app.Use(logger.New())  // Loglama middleware'i
+	app.Use(recover.New()) // Panic recovery middleware'i
+	app.Use(cors.New())    // CORS middleware'i
 
 	// HTTP route'larını kaydet
-	routes.RegisterHTTPRoutes(app, gs.rateLimiter)
+	// routes.RegisterHTTPRoutes(app, gs.rateLimiter)
+	routes.RegisterRoutes(app, gs.rateLimiter)
+	routes.RegisterWebSocketRoutes(app, gs.rateLimiter)
 
 	// Ana sayfa route'u
 	app.Get("/", func(c *fiber.Ctx) error {

@@ -1,15 +1,17 @@
 package utils
 
 import (
-	"bytes"
+	"fmt"
 	"gateway-service/internal/config"
-
-	"io"
+	"log"
 	"net/http"
 	"strings"
-	"time"
 
+	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/proxy"
+	"github.com/google/uuid"
+	gorilla "github.com/gorilla/websocket"
 )
 
 func isProtectedRoute(service, path string) bool {
@@ -25,64 +27,148 @@ func isProtectedRoute(service, path string) bool {
 		}
 	}
 	return false
+} // BuildProxyHandler, verilen servis için bir Fiber handler döndürür.
+func BuildProxyHandler(serviceName string) fiber.Handler {
+	var serviceURL string
+
+	serviceURL = config.Services[serviceName]
+
+	if serviceURL == "" {
+		return func(c *fiber.Ctx) error {
+			return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "Service not found"})
+		}
+	}
+
+	return func(c *fiber.Ctx) error {
+		// Orijinal URL'den servis prefix'ini kaldır
+		rewrittenPath := strings.TrimPrefix(c.Path(), "/"+serviceName)
+		if rewrittenPath == "" {
+			rewrittenPath = "/"
+		}
+
+		// Sorgu parametrelerini al
+		queryString := c.Context().URI().QueryString()
+
+		// Hedef URL'i oluştur ve sorgu parametrelerini ekle
+		fullURL := serviceURL + rewrittenPath
+		if len(queryString) > 0 {
+			fullURL += "?" + string(queryString)
+		}
+
+		// Debug için logla
+		log.Printf("Proxying request from %s to %s", c.OriginalURL(), fullURL)
+
+		// Fiber'ın kendi proxy'sini kullanarak isteği yönlendir
+		return proxy.Do(c, fullURL)
+	}
 }
 
-func BuildProxyHandler(service string) fiber.Handler {
-	return func(c *fiber.Ctx) error {
-		c.Locals("service_name", service) // Servis adını context'e ekle
+type WrbsocketHandler = func(*websocket.Conn)
 
-		// Orijinal URL'den servis prefix'ini kaldır
-		path := strings.TrimPrefix(c.OriginalURL(), "/"+service)
+func BuildWebSocketProxy(serviceName string) WrbsocketHandler {
 
-		// HTTP istemcisi oluştur (10 saniye timeout ile)
-		client := &http.Client{Timeout: 10 * time.Second}
-		targetURL := config.Services[service]
-		fullURL := targetURL + path
+	var serviceURL string
 
-		// Query parametrelerini ekle
-		if query := c.Context().URI().QueryString(); len(query) > 0 {
-			fullURL += "?" + string(query)
+	serviceURL = config.WebSocketServices[serviceName]
+	if serviceURL == "" {
+		return func(c *websocket.Conn) {
+
 		}
 
-		// Yeni HTTP isteği oluştur
-		req, err := http.NewRequest(c.Method(), fullURL, bytes.NewReader(c.Body()))
-		if err != nil {
-			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+	}
+	return func(clientConn *websocket.Conn) {
+		// Hedef path'i al
+		target := clientConn.Locals("ws_path")
+		targetPath := ""
+		if target != nil {
+			targetPath = "/" + target.(string)
 		}
+		url := config.WebSocketServices[serviceName] + targetPath
+		fmt.Println("url>", url)
+		// İstek başlıklarını hazırla
+		requestHeaders := http.Header{}
+		headerKeys := []string{"Authorization", "Session"}
 
-		// İstek başlıklarını kopyala
-		for k, vals := range c.GetReqHeaders() {
-			for _, v := range vals {
-				req.Header.Add(k, v)
+		for _, key := range headerKeys {
+			value := clientConn.Headers(key)
+			if value != "" {
+				requestHeaders.Set(key, value)
 			}
 		}
 
-		// İsteği gönder
-		resp, err := client.Do(req)
-		if err != nil {
-			return c.Status(http.StatusServiceUnavailable).JSON(fiber.Map{"error": err.Error()})
-		}
-		defer resp.Body.Close()
-
-		// Yanıt gövdesini oku
-		body, err := io.ReadAll(resp.Body)
-		if err != nil {
-			return c.Status(http.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+		// Session cookie'sini ekle
+		cookie := clientConn.Cookies("Session")
+		if cookie != "" {
+			requestHeaders.Set("Cookie", "Session="+cookie)
 		}
 
-		// Yanıt başlıklarını kopyala
-		for k, vals := range resp.Header {
-			for _, v := range vals {
+		// Backend'e WebSocket bağlantısı kur
+		dialer := &gorilla.Dialer{}
+		backendConn, _, err := dialer.Dial(url, requestHeaders)
+		if err != nil {
+			log.Printf("WS backend error: %v", err)
+			return
+		}
 
-				if strings.ToLower(k) == "set-cookie" {
-					c.Append("Set-Cookie", v) // Append, çünkü Fiber tek başlıkta birden fazla Set-Cookie'yi desteklemez
-				} else {
-					c.Set(k, v)
+		defer backendConn.Close()
+
+		// Benzersiz client ID oluştur
+		clientID := uuid.New().String()
+
+		// İletişimi durdurmak için kanal
+		stop := make(chan struct{})
+
+		// Client -> Backend iletişimi
+		go func() {
+			defer func() {
+				log.Printf("client -> backend closed [clientID: %s]", clientID)
+				_ = backendConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "client closed"))
+				close(stop)
+			}()
+			for {
+				// Client'tan mesaj oku
+				t, msg, err := clientConn.ReadMessage()
+				if err != nil {
+					if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
+						log.Printf("client normal close [clientID: %s]", clientID)
+					} else {
+						log.Printf("client read error [clientID: %s]: %v", clientID, err)
+					}
+					return
+				}
+				// Backend'e mesaj gönder
+				err = backendConn.WriteMessage(t, msg)
+				if err != nil {
+					log.Printf("backend write error [clientID: %s]: %v", clientID, err)
+					return
 				}
 			}
-		}
+		}()
 
-		// Yanıtı gönder
-		return c.Status(resp.StatusCode).Send(body)
+		// Backend -> Client iletişimi
+		go func() {
+			defer func() {
+				log.Printf("backend -> client closed [clientID: %s]", clientID)
+				_ = clientConn.WriteMessage(websocket.CloseMessage, websocket.FormatCloseMessage(websocket.CloseNormalClosure, "backend closed"))
+			}()
+
+			for {
+				// Backend'den mesaj oku
+				t, msg, err := backendConn.ReadMessage()
+				if err != nil {
+					log.Printf("backend read error [clientID: %s]: %v", clientID, err)
+					return
+				}
+				// Client'a mesaj gönder
+				err = clientConn.WriteMessage(t, msg)
+				if err != nil {
+					log.Printf("client write error [clientID: %s]: %v", clientID, err)
+					return
+				}
+			}
+		}()
+
+		// İletişim durana kadar bekle
+		<-stop
 	}
 }
