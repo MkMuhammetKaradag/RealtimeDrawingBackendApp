@@ -13,7 +13,7 @@ type SignUpRequest struct {
 }
 
 type SignUpResponse struct {
-	Message             string `json:"message"`
+	Message string `json:"message"`
 }
 type SignUpHandler struct {
 	usecase usecase.SignUpUseCase
@@ -26,7 +26,7 @@ func NewSignUpHandler(usecase usecase.SignUpUseCase) *SignUpHandler {
 }
 
 func (h *SignUpHandler) Handle(ctx context.Context, req *SignUpRequest) (*SignUpResponse, error) {
-	 err := h.usecase.Execute(ctx, &domain.User{
+	err := h.usecase.Execute(ctx, &domain.User{
 		Username: req.Username,
 		Email:    req.Email,
 		Password: req.Password,
@@ -35,5 +35,5 @@ func (h *SignUpHandler) Handle(ctx context.Context, req *SignUpRequest) (*SignUp
 		return nil, err
 	}
 
-	return &SignUpResponse{Message: "User "}, nil
+	return &SignUpResponse{Message: " Please check your email"}, nil
 }

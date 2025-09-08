@@ -33,7 +33,10 @@ func NewSignUpUseCase(repository PostgresRepository) SignUpUseCase {
 
 func (u *signUpUseCase) Execute(ctx context.Context, user *domain.User) error {
 
-	fmt.Println("signup-user", user)
-
+	activationID, activationCode, err := u.postgresRepository.SignUp(ctx, user)
+	if err != nil {
+		return err
+	}
+	fmt.Println("activation_id:", activationID, "activation_code:", activationCode)
 	return nil
 }
