@@ -2,6 +2,8 @@ package bootstrap
 
 import (
 	"auth-service/config"
+	authhandler "auth-service/internal/api/handler"
+	"auth-service/internal/handler"
 	"auth-service/internal/server"
 	"fmt"
 	"log"
@@ -29,6 +31,8 @@ func SetupServer(config config.Config, httpHandlers map[string]interface{}) *fib
 	}
 
 	app := server.NewFiberApp(serverConfig)
+	signUpHandler := httpHandlers["signup"].(*authhandler.SignUpHandler)
+	app.Post("/signup", handler.HandleBasic[authhandler.SignUpRequest, authhandler.SignUpResponse](signUpHandler))
 
 	app.Get("/hello", func(c *fiber.Ctx) error {
 

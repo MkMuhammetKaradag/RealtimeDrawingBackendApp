@@ -1,6 +1,16 @@
 package bootstrap
 
-func SetupHTTPHandlers() map[string]interface{} {
+import (
+	authHandler "auth-service/internal/api/handler"
+	authUsecase "auth-service/internal/api/usecase"
+)
 
-	return map[string]interface{}{}
+func SetupHTTPHandlers(postgresRepository PostgresRepository) map[string]interface{} {
+
+	signUpUseCase := authUsecase.NewSignUpUseCase(postgresRepository)
+	signUpHandler := authHandler.NewSignUpHandler(signUpUseCase)
+
+	return map[string]interface{}{
+		"signup": signUpHandler,
+	}
 }

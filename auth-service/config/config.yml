@@ -6,3 +6,11 @@ app:
 server:
   port: 8081
   host: 'localhost'
+
+postgres:
+  port: 5432
+  user: 'myuser'
+  password: 'mypassword'
+  db: 'authdb'
+  host: 'localhost'
+  image:

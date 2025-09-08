@@ -12,6 +12,7 @@ import (
 
 type App struct {
 	config       config.Config
+	postgresRepo PostgresRepository
 	fiberApp     *fiber.App
 	httpHandlers map[string]interface{}
 }
@@ -25,8 +26,8 @@ func NewApp(config config.Config) *App {
 }
 
 func (a *App) initDependencies() {
-
-	a.httpHandlers = SetupHTTPHandlers()
+	a.postgresRepo = InitDatabase(a.config)
+	a.httpHandlers = SetupHTTPHandlers(a.postgresRepo)
 	a.fiberApp = SetupServer(a.config, a.httpHandlers)
 }
 
