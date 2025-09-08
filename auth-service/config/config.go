@@ -1,6 +1,8 @@
 package config
 
 import (
+	"strings"
+
 	"github.com/spf13/viper"
 	"go.uber.org/zap"
 )
@@ -39,15 +41,27 @@ func Read() Config {
 	viper.AddConfigPath("/app")
 	viper.AddConfigPath("/")
 
-	if err := viper.ReadInConfig(); err != nil {
-		//log.Fatalf("FAİLED TO READ CONFİGURATİON FİLE: %v", err)
-		zap.L().Error("FAİLED TO READ CONFİGURATİON FİLE", zap.Error(err))
+	// Defaults
+	viper.SetDefault("server.port", "8081")
+	viper.SetDefault("server.host", "0.0.0.0")
 
+	viper.SetDefault("postgres.port", "5432")
+	viper.SetDefault("postgres.host", "localhost")
+	viper.SetDefault("postgres.user", "myuser")
+	viper.SetDefault("postgres.password", "mypassword")
+	viper.SetDefault("postgres.db", "authdb")
+
+	// ENV overrides with prefix AUTH_ and dot-to-underscore replacement
+	viper.SetEnvPrefix("AUTH")
+	viper.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	viper.AutomaticEnv()
+
+	if err := viper.ReadInConfig(); err != nil {
+		zap.L().Warn("Failed to read configuration file", zap.Error(err))
 	}
 
 	var config Config
 	if err := viper.Unmarshal(&config); err != nil {
-		//log.Fatalf("Configuration could not be parsed: %v", err)
 		zap.L().Error("Configuration could not be parsed", zap.Error(err))
 	}
 

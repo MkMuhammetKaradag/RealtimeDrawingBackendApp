@@ -58,6 +58,13 @@ func BuildProxyHandler(serviceName string) fiber.Handler {
 		// Debug için logla
 		log.Printf("Proxying request from %s to %s", c.OriginalURL(), fullURL)
 
+		// Ensure request-id header
+		reqID := c.Get("X-Request-ID")
+		if reqID == "" {
+			reqID = c.Locals("requestid").(string)
+		}
+		c.Request().Header.Set("X-Request-ID", reqID)
+
 		// Fiber'ın kendi proxy'sini kullanarak isteği yönlendir
 		return proxy.Do(c, fullURL)
 	}
@@ -87,7 +94,7 @@ func BuildWebSocketProxy(serviceName string) WrbsocketHandler {
 		fmt.Println("url>", url)
 		// İstek başlıklarını hazırla
 		requestHeaders := http.Header{}
-		headerKeys := []string{"Authorization", "Session"}
+		headerKeys := []string{"Authorization", "Session", "X-Request-ID"}
 
 		for _, key := range headerKeys {
 			value := clientConn.Headers(key)
@@ -100,6 +107,11 @@ func BuildWebSocketProxy(serviceName string) WrbsocketHandler {
 		cookie := clientConn.Cookies("Session")
 		if cookie != "" {
 			requestHeaders.Set("Cookie", "Session="+cookie)
+		}
+
+		// Ensure request id
+		if requestHeaders.Get("X-Request-ID") == "" {
+			requestHeaders.Set("X-Request-ID", uuid.NewString())
 		}
 
 		// Backend'e WebSocket bağlantısı kur

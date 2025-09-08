@@ -11,6 +11,7 @@ import (
 
 type PostgresRepository interface {
 	SignUp(ctx context.Context, auth *domain.User) (uuid.UUID, string, error)
+	Close() error
 }
 
 func InitDatabase(config config.Config) PostgresRepository {

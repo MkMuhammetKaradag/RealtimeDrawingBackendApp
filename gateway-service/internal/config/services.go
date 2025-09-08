@@ -1,9 +1,21 @@
 package config
 
-var Services = map[string]string{
-	"auth": "http://localhost:8081",
-	"chat": "http://localhost:8082",
+import (
+	"os"
+)
+
+func getEnv(key, def string) string {
+	if v := os.Getenv(key); v != "" {
+		return v
+	}
+	return def
 }
+
+var Services = map[string]string{
+	"auth": getEnv("GATEWAY_AUTH_HTTP", "http://localhost:8081"),
+	"chat": getEnv("GATEWAY_CHAT_HTTP", "http://chat-service:8082"),
+}
+
 var ProtectedRoutes = map[string][]string{
 	"auth": {
 		"/logout",
@@ -11,5 +23,5 @@ var ProtectedRoutes = map[string][]string{
 }
 
 var WebSocketServices = map[string]string{
-	"wsauth": "ws://localhost:8081",
+	"wsauth": getEnv("GATEWAY_AUTH_WS", "ws://auth-service:8081"),
 }

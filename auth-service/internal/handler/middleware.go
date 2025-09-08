@@ -3,10 +3,14 @@ package handler
 import (
 	"errors"
 
-	"github.com/gofiber/fiber/v2"
+	"auth-service/domain"
 
+	"github.com/go-playground/validator/v10"
+	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
+
+var validate = validator.New()
 
 func HandleBasic[R Request, Res Response](handler BasicHandler[R, Res]) fiber.Handler {
 	return func(c *fiber.Ctx) error {
@@ -16,12 +20,22 @@ func HandleBasic[R Request, Res Response](handler BasicHandler[R, Res]) fiber.Ha
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 		}
 
+		if err := validate.Struct(req); err != nil {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "validation failed", "details": err.Error()})
+		}
+
 		ctx := c.UserContext()
 		res, err := handler.Handle(ctx, &req)
 
 		if err != nil {
 			zap.L().Error("Failed to handle request", zap.Error(err))
-			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
+
+			switch {
+			case errors.Is(err, domain.ErrDuplicateResource):
+				return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "resource already exists"})
+			default:
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal server error"})
+			}
 		}
 
 		return c.JSON(res)

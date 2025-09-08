@@ -57,7 +57,7 @@ func (r *Repository) SignUp(ctx context.Context, user *domain.User) (uuid.UUID, 
 
 	if err != nil {
 		if r.isDuplicateKeyError(err) {
-			return uuid.Nil, "", fmt.Errorf("username or email already exists: %w", err)
+			return uuid.Nil, "", fmt.Errorf("%w: username or email already exists", domain.ErrDuplicateResource)
 		}
 		return uuid.Nil, "", fmt.Errorf("insert error: %w", err)
 	}

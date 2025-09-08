@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/requestid"
 )
 
 type Config struct {
@@ -15,12 +16,20 @@ type Config struct {
 }
 
 func NewFiberApp(cfg Config) *fiber.App {
-	return fiber.New(fiber.Config{
+	app := fiber.New(fiber.Config{
 		IdleTimeout:  cfg.IdleTimeout,
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 		Concurrency:  256 * 1024,
 	})
+
+	app.Use(requestid.New())
+
+	// basic health endpoint
+	app.Get("/health", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "UP"})
+	})
+	return app
 }
 
 func Start(app *fiber.App, port string) error {

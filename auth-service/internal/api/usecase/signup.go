@@ -3,9 +3,9 @@ package usecase
 import (
 	"auth-service/domain"
 	"context"
-	"fmt"
 
 	"github.com/google/uuid"
+	"go.uber.org/zap"
 )
 
 type PostgresRepository interface {
@@ -33,10 +33,10 @@ func NewSignUpUseCase(repository PostgresRepository) SignUpUseCase {
 
 func (u *signUpUseCase) Execute(ctx context.Context, user *domain.User) error {
 
-	activationID, activationCode, err := u.postgresRepository.SignUp(ctx, user)
+	_, _, err := u.postgresRepository.SignUp(ctx, user)
 	if err != nil {
 		return err
 	}
-	fmt.Println("activation_id:", activationID, "activation_code:", activationCode)
+	zap.L().Info("signup created")
 	return nil
 }

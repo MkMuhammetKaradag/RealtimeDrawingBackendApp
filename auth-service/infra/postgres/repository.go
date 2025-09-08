@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"time"
 
 	_ "github.com/lib/pq"
 )
@@ -32,6 +33,11 @@ func NewRepository(connString string) (*Repository, error) {
 		return nil, fmt.Errorf("failed to ping database: %w", err)
 	}
 
+	// Pool tuning
+	db.SetMaxOpenConns(20)
+	db.SetMaxIdleConns(10)
+	db.SetConnMaxLifetime(30 * time.Minute)
+
 	log.Println("Connected to PostgreSQL successfully")
 
 	if err := initDB(db); err != nil {
@@ -40,4 +46,11 @@ func NewRepository(connString string) (*Repository, error) {
 
 	repo := &Repository{db: db}
 	return repo, nil
+}
+
+func (r *Repository) Close() error {
+	if r.db != nil {
+		return r.db.Close()
+	}
+	return nil
 }

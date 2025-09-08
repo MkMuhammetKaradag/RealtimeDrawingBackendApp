@@ -1,0 +1,8 @@
+**/.git
+**/node_modules
+**/tmp
+**/bin
+**/dist
+**/.cache
+**/.idea
+**/.vscode 

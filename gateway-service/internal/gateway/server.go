@@ -10,6 +10,7 @@ import (
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/logger"
+	"github.com/gofiber/fiber/v2/middleware/requestid"
 
 	"github.com/gofiber/fiber/v2/middleware/recover"
 )
@@ -35,6 +36,7 @@ func (gs *GatewayServer) Start(port string) error {
 	app := fiber.New()
 
 	// Global middleware'leri ekle
+	app.Use(requestid.New())
 	app.Use(logger.New())  // Loglama middleware'i
 	app.Use(recover.New()) // Panic recovery middleware'i
 	app.Use(cors.New())    // CORS middleware'i

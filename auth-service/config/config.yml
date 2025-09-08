@@ -4,13 +4,12 @@ app:
   description: 'test'
 
 server:
-  port: 8081
-  host: 'localhost'
+  port: '8081'
+  host: '0.0.0.0'
 
 postgres:
-  port: 5432
+  port: '5432'
   user: 'myuser'
   password: 'mypassword'
   db: 'authdb'
   host: 'localhost'
-  image:

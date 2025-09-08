@@ -12,19 +12,12 @@ import (
 func RegisterWebSocketRoutes(app *fiber.App, rateLimiter *middleware.RateLimiter) {
 
 	for prefix, _ := range config.WebSocketServices {
-		// Her servise özel bir middleware grubu oluştur
-		// middleware.ServiceName ve rateLimiter.Middleware kullanıldı
-		serviceGroup := app.Group("/"+prefix, middleware.ServiceName(prefix), rateLimiter.Middleware())
-		// Gelen tüm HTTP isteklerini ilgili servise yönlendir
-		// utils.BuildProxyHandler kullanıldı
-		// serviceGroup.All("/*", utils.BuildWebSocketProxy(prefix))
+		// WS grup: service name, rate limit, auth guard
+		serviceGroup := app.Group("/"+prefix, middleware.ServiceName(prefix), rateLimiter.Middleware(), middleware.AuthGuard())
 
 		serviceGroup.All("/*", func(c *fiber.Ctx) error {
-			// Gelen isteğin yolunu locals'a kaydet.
-			// Bu değer, daha sonra WebSocket handler'ında kullanılacak.
 			c.Locals("ws_path", c.Params("*"))
 			c.Locals("ws_header", c.GetReqHeaders())
-			// Buradan BuildWebSocketProxy'e geçiş yapıyoruz.
 			return websocket.New(utils.BuildWebSocketProxy(prefix))(c)
 		})
 

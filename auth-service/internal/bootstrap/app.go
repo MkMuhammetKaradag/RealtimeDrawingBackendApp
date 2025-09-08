@@ -41,5 +41,11 @@ func (a *App) Start() {
 
 	zap.L().Info("Server started on port", zap.String("port", a.config.Server.Port))
 
+	defer func() {
+		if err := a.postgresRepo.Close(); err != nil {
+			zap.L().Error("Failed to close database", zap.Error(err))
+		}
+	}()
+
 	graceful.WaitForShutdown(a.fiberApp, 5*time.Second, context.Background())
 }

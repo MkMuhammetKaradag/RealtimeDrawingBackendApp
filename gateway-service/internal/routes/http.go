@@ -23,13 +23,10 @@ func RegisterHTTPRoutes(app *fiber.App, rateLimiter *middleware.RateLimiter) {
 			fmt.Println("Registering protected route:", fullPath) // Debug için
 		}
 		// 🔥 Burada tüm istekler için service_name eklenmeli
-		app.Use("/"+prefix+"/*", func(c *fiber.Ctx) error {
-			c.Locals("service_name", prefix)
-			return c.Next()
-		})
-		app.Use("/"+prefix+"/*", rateLimiter.Middleware())
-		// Örnek: /auth/* istekleri auth servisine yönlendirilir
-		app.All("/"+prefix+"/*", utils.BuildProxyHandler(prefix))
+		serviceGroup := app.Group("/"+prefix, middleware.ServiceName(prefix), rateLimiter.Middleware(), middleware.AuthGuard())
+		// Gelen tüm HTTP isteklerini ilgili servise yönlendir
+		// utils.BuildProxyHandler kullanıldı
+		serviceGroup.All("/*", utils.BuildProxyHandler(prefix))
 	}
 }
 
@@ -40,13 +37,10 @@ func RegisterRoutes(app *fiber.App, rateLimiter *middleware.RateLimiter) {
 	for prefix, _ := range config.Services {
 		// Her servise özel bir middleware grubu oluştur
 		// middleware.ServiceName ve rateLimiter.Middleware kullanıldı
-		serviceGroup := app.Group("/"+prefix, middleware.ServiceName(prefix), rateLimiter.Middleware())
-		fmt.Println(serviceGroup)
+		serviceGroup := app.Group("/"+prefix, middleware.ServiceName(prefix), rateLimiter.Middleware(), middleware.AuthGuard())
 		// Gelen tüm HTTP isteklerini ilgili servise yönlendir
 		// utils.BuildProxyHandler kullanıldı
 		serviceGroup.All("/*", utils.BuildProxyHandler(prefix))
 	}
-
-	
 
 }
