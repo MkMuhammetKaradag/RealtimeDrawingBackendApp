@@ -10,7 +10,11 @@ func SetupHTTPHandlers(postgresRepository PostgresRepository) map[string]interfa
 	signUpUseCase := authUsecase.NewSignUpUseCase(postgresRepository)
 	signUpHandler := authHandler.NewSignUpHandler(signUpUseCase)
 
+	activateUseCase := authUsecase.NewActivateUseCase(postgresRepository)
+	activateHandler := authHandler.NewActivateHandler(activateUseCase)
+
 	return map[string]interface{}{
-		"signup": signUpHandler,
+		"signup":   signUpHandler,
+		"activate": activateHandler,
 	}
 }

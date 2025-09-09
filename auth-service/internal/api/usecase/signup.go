@@ -3,14 +3,10 @@ package usecase
 import (
 	"auth-service/domain"
 	"context"
+	"fmt"
 
-	"github.com/google/uuid"
 	"go.uber.org/zap"
 )
-
-type PostgresRepository interface {
-	SignUp(ctx context.Context, auth *domain.User) (uuid.UUID, string, error)
-}
 
 type SignUpUseCase interface {
 	Execute(ctx context.Context, user *domain.User) error
@@ -33,10 +29,12 @@ func NewSignUpUseCase(repository PostgresRepository) SignUpUseCase {
 
 func (u *signUpUseCase) Execute(ctx context.Context, user *domain.User) error {
 
-	_, _, err := u.postgresRepository.SignUp(ctx, user)
+	id, code, err := u.postgresRepository.SignUp(ctx, user)
 	if err != nil {
 		return err
 	}
+
+	fmt.Printf("id:%v ,    code:%v \n", id, code)
 	zap.L().Info("signup created")
 	return nil
 }

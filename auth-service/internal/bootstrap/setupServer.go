@@ -32,7 +32,10 @@ func SetupServer(config config.Config, httpHandlers map[string]interface{}) *fib
 
 	app := server.NewFiberApp(serverConfig)
 	signUpHandler := httpHandlers["signup"].(*authhandler.SignUpHandler)
+	activateHandler := httpHandlers["activate"].(*authhandler.ActivateHandler)
+
 	app.Post("/signup", handler.HandleBasic[authhandler.SignUpRequest, authhandler.SignUpResponse](signUpHandler))
+	app.Post("/user-activate", handler.HandleBasic[authhandler.ActivateRequest, authhandler.ActivateResponse](activateHandler))
 
 	app.Get("/hello", func(c *fiber.Ctx) error {
 

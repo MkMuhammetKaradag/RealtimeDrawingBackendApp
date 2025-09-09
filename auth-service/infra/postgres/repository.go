@@ -17,6 +17,7 @@ var (
 	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrTokenExpired       = errors.New("token expired")
 	ErrActivationExpired  = errors.New("activation code expired")
+	ErrInvalidActivation  = errors.New("invalid activation link or code expired")
 )
 
 type Repository struct {
