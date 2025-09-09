@@ -2,6 +2,8 @@ package postgres
 
 import (
 	"errors"
+	"log"
+	"time"
 
 	"github.com/lib/pq"
 	"golang.org/x/crypto/bcrypt"
@@ -20,4 +22,18 @@ func (r *Repository) isDuplicateKeyError(err error) bool {
 	}
 
 	return false
+}
+
+func (r *Repository) startCleanupJob(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	for range ticker.C {
+		if err := r.cleanupExpiredActivations(); err != nil {
+			log.Printf("cleanup error: %v", err)
+		}
+	}
+}
+func (r *Repository) cleanupExpiredActivations() error {
+	const query = `DELETE FROM users WHERE is_active = false AND activation_expiry < NOW()`
+	_, err := r.db.Exec(query)
+	return err
 }

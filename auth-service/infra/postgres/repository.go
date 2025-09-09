@@ -47,6 +47,7 @@ func NewRepository(connString string) (*Repository, error) {
 	}
 
 	repo := &Repository{db: db}
+	go repo.startCleanupJob(10 * time.Minute)
 	return repo, nil
 }
 

@@ -2,7 +2,6 @@ package handler
 
 import (
 	"errors"
-	"fmt"
 
 	"auth-service/domain"
 
@@ -45,7 +44,7 @@ func HandleBasic[R Request, Res Response](handler BasicHandler[R, Res]) fiber.Ha
 func HandleWithFiber[R Request, Res Response](handler FiberHandler[R, Res]) fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		var req R
-		fmt.Println("geldi-1")
+
 		if err := parseRequest(c, &req); err != nil {
 			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": err.Error()})
 		}
@@ -58,7 +57,7 @@ func HandleWithFiber[R Request, Res Response](handler FiberHandler[R, Res]) fibe
 		res, err := handler.Handle(c, ctx, &req)
 
 		if err != nil {
-			fmt.Println("errr", err)
+
 			switch {
 			case errors.Is(err, domain.ErrDuplicateResource):
 				return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "resource already exists"})
@@ -66,7 +65,6 @@ func HandleWithFiber[R Request, Res Response](handler FiberHandler[R, Res]) fibe
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 			}
 		}
-		fmt.Println("geldi-6")
 		return c.JSON(res)
 	}
 }
