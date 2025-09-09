@@ -14,10 +14,11 @@ var (
 	ErrUserNotFound       = errors.New("user not found")
 	ErrInvalidToken       = errors.New("invalid or expired token")
 	ErrMaxAttemptsReached = errors.New("maximum number of reset attempts reached")
-	ErrInvalidCredentials = errors.New("invalid credentials")
 	ErrTokenExpired       = errors.New("token expired")
 	ErrActivationExpired  = errors.New("activation code expired")
 	ErrInvalidActivation  = errors.New("invalid activation link or code expired")
+	ErrInvalidCredentials = errors.New("invalid username, email or password")
+	ErrAccountLocked      = errors.New("account is locked, please try again later")
 )
 
 type Repository struct {
