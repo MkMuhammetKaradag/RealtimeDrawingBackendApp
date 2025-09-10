@@ -6,16 +6,20 @@ import (
 	"context"
 	"time"
 
+	pb "shared-lib/user-events"
+
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
 
 type App struct {
-	config         config.Config
-	postgresRepo   PostgresRepository
-	sessionManager SessionManager
-	fiberApp       *fiber.App
-	httpHandlers   map[string]interface{}
+	config          config.Config
+	postgresRepo    PostgresRepository
+	sessionManager  SessionManager
+	kafka           Messaging
+	fiberApp        *fiber.App
+	messageHandlers map[pb.MessageType]MessageHandler
+	httpHandlers    map[string]interface{}
 }
 
 func NewApp(config config.Config) *App {
@@ -29,7 +33,9 @@ func NewApp(config config.Config) *App {
 func (a *App) initDependencies() {
 	a.postgresRepo = InitDatabase(a.config)
 	a.sessionManager = InitSessionRedis(a.config)
-	a.httpHandlers = SetupHTTPHandlers(a.postgresRepo, a.sessionManager)
+	a.messageHandlers = SetupMessageHandlers()
+	a.kafka = SetupMessaging(a.messageHandlers, a.config)
+	a.httpHandlers = SetupHTTPHandlers(a.postgresRepo, a.sessionManager, a.kafka)
 	a.fiberApp = SetupServer(a.config, a.httpHandlers)
 }
 

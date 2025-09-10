@@ -5,6 +5,8 @@ import (
 	"context"
 	"time"
 
+	pb "shared-lib/user-events"
+
 	"github.com/google/uuid"
 )
 
@@ -15,4 +17,8 @@ type PostgresRepository interface {
 }
 type SessionManager interface {
 	CreateSession(ctx context.Context, userID, token string, userData map[string]string, duration time.Duration) error
+}
+type Messaging interface {
+	Close() error
+	PublishMessage(ctx context.Context, msg *pb.Message) error
 }

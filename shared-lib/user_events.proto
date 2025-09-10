@@ -1,0 +1,54 @@
+syntax = "proto3";
+
+option go_package = "./user-events";  
+
+package user_events;
+
+import "google/protobuf/timestamp.proto"; // Timestamp için
+
+// MessageType ve ServiceType enum'ları
+enum MessageType {
+    UNKNOWN_MESSAGE_TYPE = 0;
+    USER_CREATED = 1;
+    USER_UPDATED = 2;
+    // Diğer mesaj tiplerini buraya ekleyin
+    AUTH_USER_CREATED = 3; // Auth için spesifik bir tip
+}
+
+enum ServiceType {
+    UNKNOWN_SERVICE = 0;
+    AUTH_SERVICE = 1;
+    USER_SERVICE = 2;
+    // Diğer servis tiplerini buraya ekleyin
+}
+
+message Message {
+    string id = 1;
+    MessageType type = 2;
+    google.protobuf.Timestamp created = 3;
+    ServiceType from_service = 4;
+    repeated ServiceType to_services = 5; // Birden fazla hedef servis
+    int32 priority = 6;
+    map<string, string> headers = 7; // Headers for metadata
+    bool critical = 8;
+    int32 retry_count = 9;
+
+    // Payload için bir oneof yapısı kullanabiliriz
+    oneof payload {
+        UserCreatedData user_created_data = 10;
+        // Diğer olay tipleri için buraya payload'lar eklenecek
+        // UserUpdatedData user_updated_data = 11;
+    }
+}
+
+message UserCreatedData {
+    string user_id = 1;
+    string username = 2;
+    string email = 3;
+    // Diğer ilgili kullanıcı bilgileri
+}
+
+// protoc komutu:
+// protoc --go_out=. --go_opt=paths=source_relative --go-vtproto_out=. --go-vtproto_opt=paths=source_relative user_events.proto
+// vtproto kullanmıyorsanız:
+// protoc --go_out=. --go_opt=paths=source_relative user_events.proto

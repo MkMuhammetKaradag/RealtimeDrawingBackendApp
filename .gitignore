@@ -27,6 +27,23 @@ Thumbs.db
 /build/
 /dist/
 
+
+.critical_messages/
+.important_messages/
+.quiet_kafka_logger/
+.debug_kafka_logger/
+.verbose_kafka_logger/
+.kafka_debug.log
+.kafka_verbose.log
+.kafka_quiet.log
+.kafka_important.log
+.kafka_critical.log
+.kafka_all.log
+.kafka_errors.log
+.kafka_warnings.log
+
+test-user-service-kafka/
+
 # Environment configuration files
 .env
 .env.local
@@ -57,3 +74,4 @@ coverage.html
 
 # Local go module cache
 *go.sum # Genellikle commit edilir, ancak bazı durumlarda ignore edilebilir. Proje politikasına bağlı.
+
