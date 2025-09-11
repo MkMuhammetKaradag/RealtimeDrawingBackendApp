@@ -8,6 +8,7 @@ import (
 // Config yapısını Kafka için uyarlayın
 type KafkaConfig struct {
 	Brokers              []string
+	GroupID              string
 	Topic                string
 	ClientID             string // İsteğe bağlı, Kafka loglarında görünür
 	QueueDurable         bool   // Kafka'da topic'ler varsayılan olarak kalıcıdır

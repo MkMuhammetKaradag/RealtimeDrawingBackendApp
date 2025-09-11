@@ -43,6 +43,7 @@ Thumbs.db
 .kafka_warnings.log
 
 test-user-service-kafka/
+test-chat-service-kafka/
 
 # Environment configuration files
 .env

@@ -35,7 +35,7 @@ func (u *activateUseCase) Execute(ctx context.Context, activationID uuid.UUID, a
 	message := &pb.Message{
 		Type:        pb.MessageType_AUTH_USER_CREATED, // Auth tarafından oluşturulan bir kullanıcı
 		FromService: pb.ServiceType_AUTH_SERVICE,
-		ToServices:  []pb.ServiceType{pb.ServiceType_USER_SERVICE}, // Bu mesaj USER_SERVICE için
+		ToServices:  []pb.ServiceType{pb.ServiceType_USER_SERVICE, pb.ServiceType_CHAT_SERVICE}, // Bu mesaj USER_SERVICE için
 		Payload:     &pb.Message_UserCreatedData{UserCreatedData: userCreatedData},
 	}
 	err := u.kafka.PublishMessage(ctx, message)
@@ -44,6 +44,22 @@ func (u *activateUseCase) Execute(ctx context.Context, activationID uuid.UUID, a
 	} else {
 		log.Printf("UserCreated event published ")
 	}
+
+	// userUpdatedData := &pb.UserUpdatedData{
+	// 	Username: "test-update",
+	// }
+	// message = &pb.Message{
+	// 	Type:        pb.MessageType_USER_UPDATED, // Auth tarafından oluşturulan bir kullanıcı
+	// 	FromService: pb.ServiceType_AUTH_SERVICE,
+	// 	ToServices:  []pb.ServiceType{pb.ServiceType_CHAT_SERVICE}, // Bu mesaj Chat-service  için
+	// 	Payload:     &pb.Message_UserUpdatedData{UserUpdatedData: userUpdatedData},
+	// }
+	// err = u.kafka.PublishMessage(ctx, message)
+	// if err != nil {
+	// 	log.Printf("Failed to publish UserUpdated event for user %v", err)
+	// } else {
+	// 	log.Printf("UserUpdated event published ")
+	// }
 
 	// fmt.Println()
 	// fmt.Println()

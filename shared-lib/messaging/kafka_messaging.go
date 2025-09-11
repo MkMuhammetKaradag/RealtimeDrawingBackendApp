@@ -243,14 +243,24 @@ func (kc *KafkaClient) PublishMessage(ctx context.Context, msg *pb.Message) erro
 type MessageHandler func(context.Context, *pb.Message) error
 
 // ConsumeMessages fonksiyonu, belirtilen topici dinler ve mesajları işler
-func (kc *KafkaClient) ConsumeMessages(ctx context.Context, handler MessageHandler) error {
+func (kc *KafkaClient) ConsumeMessages(ctx context.Context, handler MessageHandler, topic *string, groupID *string) error {
 	// Consumer grubu, RabbitMQ'daki her servisin kendi kuyruğuna karşılık gelir.
 	// Bu sayede her servisin bir kopyası olsa bile, mesajlar grup içinde bir kez işlenir.
 	quietLogger := QuietKafkaLogger{}
+	consumerGroupID := groupID
+	if consumerGroupID == nil {
+		id := kc.serviceType.String() + "-group"
+		consumerGroupID = &id
+	}
+
+	consumerTopic := topic
+	if consumerTopic == nil {
+		consumerTopic = &kc.config.Topic
+	}
 	readerConfig := kafka.ReaderConfig{
 		Brokers:        kc.config.Brokers,
-		GroupID:        kc.serviceType.String() + "-group", // Her servisin kendi tüketici grubu
-		Topic:          kc.config.Topic,
+		GroupID:        *consumerGroupID, // <-- Burayı güncelledik, // Her servisin kendi tüketici grubu
+		Topic:          *consumerTopic,
 		MinBytes:       10e3, // 10KB
 		MaxBytes:       10e6, // 10MB
 		MaxWait:        1 * time.Second,
@@ -300,7 +310,7 @@ func (kc *KafkaClient) ConsumeMessages(ctx context.Context, handler MessageHandl
 				continue
 			}
 
-			// RabbitMQ'daki ToServices mantığını Kafka'da uygulama tarafında yönetiyoruz
+			// ToServices mantığını Kafka'da uygulama tarafında yönetiyoruz
 			if len(message.ToServices) > 0 {
 				isForThisService := false
 				for _, svc := range message.ToServices {

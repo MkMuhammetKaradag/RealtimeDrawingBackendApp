@@ -19,6 +19,8 @@ enum ServiceType {
     UNKNOWN_SERVICE = 0;
     AUTH_SERVICE = 1;
     USER_SERVICE = 2;
+    CHAT_SERVICE = 3;
+    RETRY_SERVICE = 4;
     // Diğer servis tiplerini buraya ekleyin
 }
 
@@ -37,7 +39,9 @@ message Message {
     oneof payload {
         UserCreatedData user_created_data = 10;
         // Diğer olay tipleri için buraya payload'lar eklenecek
-        // UserUpdatedData user_updated_data = 11;
+        UserUpdatedData user_updated_data = 11;
+        UserTest user_test = 12;
+
     }
 }
 
@@ -47,8 +51,16 @@ message UserCreatedData {
     string email = 3;
     // Diğer ilgili kullanıcı bilgileri
 }
+message UserUpdatedData {
+    string user_id = 1;
+    string username = 2;
+    string email = 3;
+    // Diğer ilgili kullanıcı bilgileri
+}
 
+message UserTest {
+    string username = 2;
+}
 // protoc komutu:
 // protoc --go_out=. --go_opt=paths=source_relative --go-vtproto_out=. --go-vtproto_opt=paths=source_relative user_events.proto
-// vtproto kullanmıyorsanız:
-// protoc --go_out=. --go_opt=paths=source_relative user_events.proto
+// protoc --go_out=user-events --go_opt=paths=source_relative user_events.proto

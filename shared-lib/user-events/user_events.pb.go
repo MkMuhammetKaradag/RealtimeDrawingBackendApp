@@ -81,7 +81,9 @@ type ServiceType int32
 const (
 	ServiceType_UNKNOWN_SERVICE ServiceType = 0
 	ServiceType_AUTH_SERVICE    ServiceType = 1
-	ServiceType_USER_SERVICE    ServiceType = 2 // Diğer servis tiplerini buraya ekleyin
+	ServiceType_USER_SERVICE    ServiceType = 2
+	ServiceType_CHAT_SERVICE    ServiceType = 3
+	ServiceType_RETRY_SERVICE   ServiceType = 4 // Diğer servis tiplerini buraya ekleyin
 )
 
 // Enum value maps for ServiceType.
@@ -90,11 +92,15 @@ var (
 		0: "UNKNOWN_SERVICE",
 		1: "AUTH_SERVICE",
 		2: "USER_SERVICE",
+		3: "CHAT_SERVICE",
+		4: "RETRY_SERVICE",
 	}
 	ServiceType_value = map[string]int32{
 		"UNKNOWN_SERVICE": 0,
 		"AUTH_SERVICE":    1,
 		"USER_SERVICE":    2,
+		"CHAT_SERVICE":    3,
+		"RETRY_SERVICE":   4,
 	}
 )
 
@@ -141,6 +147,8 @@ type Message struct {
 	// Types that are valid to be assigned to Payload:
 	//
 	//	*Message_UserCreatedData
+	//	*Message_UserUpdatedData
+	//	*Message_UserTest
 	Payload       isMessage_Payload `protobuf_oneof:"payload"`
 	unknownFields protoimpl.UnknownFields
 	sizeCache     protoimpl.SizeCache
@@ -255,6 +263,24 @@ func (x *Message) GetUserCreatedData() *UserCreatedData {
 	return nil
 }
 
+func (x *Message) GetUserUpdatedData() *UserUpdatedData {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_UserUpdatedData); ok {
+			return x.UserUpdatedData
+		}
+	}
+	return nil
+}
+
+func (x *Message) GetUserTest() *UserTest {
+	if x != nil {
+		if x, ok := x.Payload.(*Message_UserTest); ok {
+			return x.UserTest
+		}
+	}
+	return nil
+}
+
 type isMessage_Payload interface {
 	isMessage_Payload()
 }
@@ -263,7 +289,20 @@ type Message_UserCreatedData struct {
 	UserCreatedData *UserCreatedData `protobuf:"bytes,10,opt,name=user_created_data,json=userCreatedData,proto3,oneof"`
 }
 
+type Message_UserUpdatedData struct {
+	// Diğer olay tipleri için buraya payload'lar eklenecek
+	UserUpdatedData *UserUpdatedData `protobuf:"bytes,11,opt,name=user_updated_data,json=userUpdatedData,proto3,oneof"`
+}
+
+type Message_UserTest struct {
+	UserTest *UserTest `protobuf:"bytes,12,opt,name=user_test,json=userTest,proto3,oneof"`
+}
+
 func (*Message_UserCreatedData) isMessage_Payload() {}
+
+func (*Message_UserUpdatedData) isMessage_Payload() {}
+
+func (*Message_UserTest) isMessage_Payload() {}
 
 type UserCreatedData struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
@@ -325,11 +364,115 @@ func (x *UserCreatedData) GetEmail() string {
 	return ""
 }
 
+type UserUpdatedData struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	UserId        string                 `protobuf:"bytes,1,opt,name=user_id,json=userId,proto3" json:"user_id,omitempty"`
+	Username      string                 `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
+	Email         string                 `protobuf:"bytes,3,opt,name=email,proto3" json:"email,omitempty"` // Diğer ilgili kullanıcı bilgileri
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UserUpdatedData) Reset() {
+	*x = UserUpdatedData{}
+	mi := &file_user_events_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UserUpdatedData) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserUpdatedData) ProtoMessage() {}
+
+func (x *UserUpdatedData) ProtoReflect() protoreflect.Message {
+	mi := &file_user_events_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserUpdatedData.ProtoReflect.Descriptor instead.
+func (*UserUpdatedData) Descriptor() ([]byte, []int) {
+	return file_user_events_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *UserUpdatedData) GetUserId() string {
+	if x != nil {
+		return x.UserId
+	}
+	return ""
+}
+
+func (x *UserUpdatedData) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
+func (x *UserUpdatedData) GetEmail() string {
+	if x != nil {
+		return x.Email
+	}
+	return ""
+}
+
+type UserTest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	Username      string                 `protobuf:"bytes,2,opt,name=username,proto3" json:"username,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *UserTest) Reset() {
+	*x = UserTest{}
+	mi := &file_user_events_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *UserTest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*UserTest) ProtoMessage() {}
+
+func (x *UserTest) ProtoReflect() protoreflect.Message {
+	mi := &file_user_events_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use UserTest.ProtoReflect.Descriptor instead.
+func (*UserTest) Descriptor() ([]byte, []int) {
+	return file_user_events_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *UserTest) GetUsername() string {
+	if x != nil {
+		return x.Username
+	}
+	return ""
+}
+
 var File_user_events_proto protoreflect.FileDescriptor
 
 const file_user_events_proto_rawDesc = "" +
 	"\n" +
-	"\x11user_events.proto\x12\vuser_events\x1a\x1fgoogle/protobuf/timestamp.proto\"\x9e\x04\n" +
+	"\x11user_events.proto\x12\vuser_events\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa0\x05\n" +
 	"\aMessage\x12\x0e\n" +
 	"\x02id\x18\x01 \x01(\tR\x02id\x12,\n" +
 	"\x04type\x18\x02 \x01(\x0e2\x18.user_events.MessageTypeR\x04type\x124\n" +
@@ -343,7 +486,9 @@ const file_user_events_proto_rawDesc = "" +
 	"\vretry_count\x18\t \x01(\x05R\n" +
 	"retryCount\x12J\n" +
 	"\x11user_created_data\x18\n" +
-	" \x01(\v2\x1c.user_events.UserCreatedDataH\x00R\x0fuserCreatedData\x1a:\n" +
+	" \x01(\v2\x1c.user_events.UserCreatedDataH\x00R\x0fuserCreatedData\x12J\n" +
+	"\x11user_updated_data\x18\v \x01(\v2\x1c.user_events.UserUpdatedDataH\x00R\x0fuserUpdatedData\x124\n" +
+	"\tuser_test\x18\f \x01(\v2\x15.user_events.UserTestH\x00R\buserTest\x1a:\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\t\n" +
@@ -351,16 +496,24 @@ const file_user_events_proto_rawDesc = "" +
 	"\x0fUserCreatedData\x12\x17\n" +
 	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1a\n" +
 	"\busername\x18\x02 \x01(\tR\busername\x12\x14\n" +
-	"\x05email\x18\x03 \x01(\tR\x05email*b\n" +
+	"\x05email\x18\x03 \x01(\tR\x05email\"\\\n" +
+	"\x0fUserUpdatedData\x12\x17\n" +
+	"\auser_id\x18\x01 \x01(\tR\x06userId\x12\x1a\n" +
+	"\busername\x18\x02 \x01(\tR\busername\x12\x14\n" +
+	"\x05email\x18\x03 \x01(\tR\x05email\"&\n" +
+	"\bUserTest\x12\x1a\n" +
+	"\busername\x18\x02 \x01(\tR\busername*b\n" +
 	"\vMessageType\x12\x18\n" +
 	"\x14UNKNOWN_MESSAGE_TYPE\x10\x00\x12\x10\n" +
 	"\fUSER_CREATED\x10\x01\x12\x10\n" +
 	"\fUSER_UPDATED\x10\x02\x12\x15\n" +
-	"\x11AUTH_USER_CREATED\x10\x03*F\n" +
+	"\x11AUTH_USER_CREATED\x10\x03*k\n" +
 	"\vServiceType\x12\x13\n" +
 	"\x0fUNKNOWN_SERVICE\x10\x00\x12\x10\n" +
 	"\fAUTH_SERVICE\x10\x01\x12\x10\n" +
-	"\fUSER_SERVICE\x10\x02B\x0fZ\r./user-eventsb\x06proto3"
+	"\fUSER_SERVICE\x10\x02\x12\x10\n" +
+	"\fCHAT_SERVICE\x10\x03\x12\x11\n" +
+	"\rRETRY_SERVICE\x10\x04B\x0fZ\r./user-eventsb\x06proto3"
 
 var (
 	file_user_events_proto_rawDescOnce sync.Once
@@ -375,27 +528,31 @@ func file_user_events_proto_rawDescGZIP() []byte {
 }
 
 var file_user_events_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_user_events_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_user_events_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
 var file_user_events_proto_goTypes = []any{
 	(MessageType)(0),              // 0: user_events.MessageType
 	(ServiceType)(0),              // 1: user_events.ServiceType
 	(*Message)(nil),               // 2: user_events.Message
 	(*UserCreatedData)(nil),       // 3: user_events.UserCreatedData
-	nil,                           // 4: user_events.Message.HeadersEntry
-	(*timestamppb.Timestamp)(nil), // 5: google.protobuf.Timestamp
+	(*UserUpdatedData)(nil),       // 4: user_events.UserUpdatedData
+	(*UserTest)(nil),              // 5: user_events.UserTest
+	nil,                           // 6: user_events.Message.HeadersEntry
+	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
 }
 var file_user_events_proto_depIdxs = []int32{
 	0, // 0: user_events.Message.type:type_name -> user_events.MessageType
-	5, // 1: user_events.Message.created:type_name -> google.protobuf.Timestamp
+	7, // 1: user_events.Message.created:type_name -> google.protobuf.Timestamp
 	1, // 2: user_events.Message.from_service:type_name -> user_events.ServiceType
 	1, // 3: user_events.Message.to_services:type_name -> user_events.ServiceType
-	4, // 4: user_events.Message.headers:type_name -> user_events.Message.HeadersEntry
+	6, // 4: user_events.Message.headers:type_name -> user_events.Message.HeadersEntry
 	3, // 5: user_events.Message.user_created_data:type_name -> user_events.UserCreatedData
-	6, // [6:6] is the sub-list for method output_type
-	6, // [6:6] is the sub-list for method input_type
-	6, // [6:6] is the sub-list for extension type_name
-	6, // [6:6] is the sub-list for extension extendee
-	0, // [0:6] is the sub-list for field type_name
+	4, // 6: user_events.Message.user_updated_data:type_name -> user_events.UserUpdatedData
+	5, // 7: user_events.Message.user_test:type_name -> user_events.UserTest
+	8, // [8:8] is the sub-list for method output_type
+	8, // [8:8] is the sub-list for method input_type
+	8, // [8:8] is the sub-list for extension type_name
+	8, // [8:8] is the sub-list for extension extendee
+	0, // [0:8] is the sub-list for field type_name
 }
 
 func init() { file_user_events_proto_init() }
@@ -405,6 +562,8 @@ func file_user_events_proto_init() {
 	}
 	file_user_events_proto_msgTypes[0].OneofWrappers = []any{
 		(*Message_UserCreatedData)(nil),
+		(*Message_UserUpdatedData)(nil),
+		(*Message_UserTest)(nil),
 	}
 	type x struct{}
 	out := protoimpl.TypeBuilder{
@@ -412,7 +571,7 @@ func file_user_events_proto_init() {
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_user_events_proto_rawDesc), len(file_user_events_proto_rawDesc)),
 			NumEnums:      2,
-			NumMessages:   3,
+			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
