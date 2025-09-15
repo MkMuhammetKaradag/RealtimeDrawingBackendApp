@@ -1,0 +1,21 @@
+app:
+  name: 'game-service'
+  version: '1.0.0'
+  description: 'test'
+
+server:
+  port: '8083'
+  host: '0.0.0.0'
+
+postgres:
+  port: '5432'
+  user: 'myuser'
+  password: 'mypassword'
+  db: 'gamedb'
+  host: 'localhost'
+
+sessionredis:
+  host: 'localhost'
+  port: '6379'
+  password: ''
+  db: 0
