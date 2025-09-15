@@ -16,7 +16,9 @@ type PostgresRepository interface {
 	SignIn(ctx context.Context, identifier, password string) (*domain.User, error)
 }
 type SessionManager interface {
-	CreateSession(ctx context.Context, userID, token string, userData map[string]string, duration time.Duration) error
+	CreateSession(ctx context.Context, token string, data *domain.SessionData, duration time.Duration) error
+	DeleteSession(ctx context.Context, token string) error
+	DeleteAllUserSessions(ctx context.Context, token string) error
 }
 type Messaging interface {
 	Close() error

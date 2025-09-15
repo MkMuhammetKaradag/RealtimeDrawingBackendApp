@@ -19,6 +19,7 @@ var Services = map[string]string{
 var ProtectedRoutes = map[string][]string{
 	"auth": {
 		"/logout",
+		"/all-logout",
 	},
 }
 

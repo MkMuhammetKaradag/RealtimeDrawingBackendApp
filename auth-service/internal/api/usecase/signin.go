@@ -29,21 +29,21 @@ func (u *signInUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context, identifi
 	if err != nil {
 		return nil, err
 	}
-	sessionKey := user.ID
 	sessionToken := uuid.New().String()
 	device := fbrCtx.Get("User-Agent")
 	ip := fbrCtx.IP()
 
-	userData := map[string]string{
-		"id":     user.ID,
-		"device": device,
-		"ip":     ip,
+	userData := &domain.SessionData{
+		UserID:   user.ID,
+		Device:   device,
+		Username: "boş",
+		Ip:       ip,
 	}
-	if err := u.sesionManager.CreateSession(ctx, sessionKey, sessionToken, userData, 24*time.Hour); err != nil {
+	if err := u.sesionManager.CreateSession(ctx, sessionToken, userData, 24*time.Hour); err != nil {
 		return nil, err
 	}
 	fbrCtx.Cookie(&fiber.Cookie{
-		Name:     "session_token",
+		Name:     "Session",
 		Value:    sessionToken,
 		Path:     "/",
 		MaxAge:   60 * 60 * 24,
