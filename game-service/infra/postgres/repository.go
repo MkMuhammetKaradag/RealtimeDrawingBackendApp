@@ -1,12 +1,14 @@
 package postgres
 
 import (
+	"context"
 	"database/sql"
 	"errors"
 	"fmt"
 	"log"
 	"time"
 
+	"github.com/google/uuid"
 	_ "github.com/lib/pq"
 )
 
@@ -53,6 +55,22 @@ func NewRepository(connString string) (*Repository, error) {
 func (r *Repository) Close() error {
 	if r.db != nil {
 		return r.db.Close()
+	}
+	return nil
+}
+
+func (r *Repository) CreateUser(ctx context.Context, id uuid.UUID, username, email string) error {
+
+	query := `
+		INSERT INTO users (id, username, email)
+		VALUES ($1, $2, $3)
+		ON CONFLICT (id) DO UPDATE
+        SET username = EXCLUDED.username,
+            email = EXCLUDED.email
+	`
+	_, err := r.db.ExecContext(ctx, query, id, username, email)
+	if err != nil {
+		return fmt.Errorf("failed to create user: %w", err)
 	}
 	return nil
 }

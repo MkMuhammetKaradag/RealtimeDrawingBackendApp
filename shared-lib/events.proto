@@ -1,8 +1,8 @@
 syntax = "proto3";
 
-option go_package = "./user-events";  
+option go_package = "./events";  
 
-package user_events;
+package events;
 
 import "google/protobuf/timestamp.proto"; // Timestamp için
 
@@ -20,7 +20,8 @@ enum ServiceType {
     AUTH_SERVICE = 1;
     USER_SERVICE = 2;
     CHAT_SERVICE = 3;
-    RETRY_SERVICE = 4;
+    GAME_SERVICE = 4;
+    RETRY_SERVICE = 5;
     // Diğer servis tiplerini buraya ekleyin
 }
 
@@ -63,4 +64,4 @@ message UserTest {
 }
 // protoc komutu:
 // protoc --go_out=. --go_opt=paths=source_relative --go-vtproto_out=. --go-vtproto_opt=paths=source_relative user_events.proto
-// protoc --go_out=user-events --go_opt=paths=source_relative user_events.proto
+// protoc --go_out=events --go_opt=paths=source_relative events.proto

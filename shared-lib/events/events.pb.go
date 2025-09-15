@@ -2,9 +2,9 @@
 // versions:
 // 	protoc-gen-go v1.36.9
 // 	protoc        v6.30.0
-// source: user_events.proto
+// source: events.proto
 
-package user_events
+package events
 
 import (
 	protoreflect "google.golang.org/protobuf/reflect/protoreflect"
@@ -60,11 +60,11 @@ func (x MessageType) String() string {
 }
 
 func (MessageType) Descriptor() protoreflect.EnumDescriptor {
-	return file_user_events_proto_enumTypes[0].Descriptor()
+	return file_events_proto_enumTypes[0].Descriptor()
 }
 
 func (MessageType) Type() protoreflect.EnumType {
-	return &file_user_events_proto_enumTypes[0]
+	return &file_events_proto_enumTypes[0]
 }
 
 func (x MessageType) Number() protoreflect.EnumNumber {
@@ -73,7 +73,7 @@ func (x MessageType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use MessageType.Descriptor instead.
 func (MessageType) EnumDescriptor() ([]byte, []int) {
-	return file_user_events_proto_rawDescGZIP(), []int{0}
+	return file_events_proto_rawDescGZIP(), []int{0}
 }
 
 type ServiceType int32
@@ -83,7 +83,8 @@ const (
 	ServiceType_AUTH_SERVICE    ServiceType = 1
 	ServiceType_USER_SERVICE    ServiceType = 2
 	ServiceType_CHAT_SERVICE    ServiceType = 3
-	ServiceType_RETRY_SERVICE   ServiceType = 4 // Diğer servis tiplerini buraya ekleyin
+	ServiceType_GAME_SERVICE    ServiceType = 4
+	ServiceType_RETRY_SERVICE   ServiceType = 5 // Diğer servis tiplerini buraya ekleyin
 )
 
 // Enum value maps for ServiceType.
@@ -93,14 +94,16 @@ var (
 		1: "AUTH_SERVICE",
 		2: "USER_SERVICE",
 		3: "CHAT_SERVICE",
-		4: "RETRY_SERVICE",
+		4: "GAME_SERVICE",
+		5: "RETRY_SERVICE",
 	}
 	ServiceType_value = map[string]int32{
 		"UNKNOWN_SERVICE": 0,
 		"AUTH_SERVICE":    1,
 		"USER_SERVICE":    2,
 		"CHAT_SERVICE":    3,
-		"RETRY_SERVICE":   4,
+		"GAME_SERVICE":    4,
+		"RETRY_SERVICE":   5,
 	}
 )
 
@@ -115,11 +118,11 @@ func (x ServiceType) String() string {
 }
 
 func (ServiceType) Descriptor() protoreflect.EnumDescriptor {
-	return file_user_events_proto_enumTypes[1].Descriptor()
+	return file_events_proto_enumTypes[1].Descriptor()
 }
 
 func (ServiceType) Type() protoreflect.EnumType {
-	return &file_user_events_proto_enumTypes[1]
+	return &file_events_proto_enumTypes[1]
 }
 
 func (x ServiceType) Number() protoreflect.EnumNumber {
@@ -128,16 +131,16 @@ func (x ServiceType) Number() protoreflect.EnumNumber {
 
 // Deprecated: Use ServiceType.Descriptor instead.
 func (ServiceType) EnumDescriptor() ([]byte, []int) {
-	return file_user_events_proto_rawDescGZIP(), []int{1}
+	return file_events_proto_rawDescGZIP(), []int{1}
 }
 
 type Message struct {
 	state       protoimpl.MessageState `protogen:"open.v1"`
 	Id          string                 `protobuf:"bytes,1,opt,name=id,proto3" json:"id,omitempty"`
-	Type        MessageType            `protobuf:"varint,2,opt,name=type,proto3,enum=user_events.MessageType" json:"type,omitempty"`
+	Type        MessageType            `protobuf:"varint,2,opt,name=type,proto3,enum=events.MessageType" json:"type,omitempty"`
 	Created     *timestamppb.Timestamp `protobuf:"bytes,3,opt,name=created,proto3" json:"created,omitempty"`
-	FromService ServiceType            `protobuf:"varint,4,opt,name=from_service,json=fromService,proto3,enum=user_events.ServiceType" json:"from_service,omitempty"`
-	ToServices  []ServiceType          `protobuf:"varint,5,rep,packed,name=to_services,json=toServices,proto3,enum=user_events.ServiceType" json:"to_services,omitempty"` // Birden fazla hedef servis
+	FromService ServiceType            `protobuf:"varint,4,opt,name=from_service,json=fromService,proto3,enum=events.ServiceType" json:"from_service,omitempty"`
+	ToServices  []ServiceType          `protobuf:"varint,5,rep,packed,name=to_services,json=toServices,proto3,enum=events.ServiceType" json:"to_services,omitempty"` // Birden fazla hedef servis
 	Priority    int32                  `protobuf:"varint,6,opt,name=priority,proto3" json:"priority,omitempty"`
 	Headers     map[string]string      `protobuf:"bytes,7,rep,name=headers,proto3" json:"headers,omitempty" protobuf_key:"bytes,1,opt,name=key" protobuf_val:"bytes,2,opt,name=value"` // Headers for metadata
 	Critical    bool                   `protobuf:"varint,8,opt,name=critical,proto3" json:"critical,omitempty"`
@@ -156,7 +159,7 @@ type Message struct {
 
 func (x *Message) Reset() {
 	*x = Message{}
-	mi := &file_user_events_proto_msgTypes[0]
+	mi := &file_events_proto_msgTypes[0]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -168,7 +171,7 @@ func (x *Message) String() string {
 func (*Message) ProtoMessage() {}
 
 func (x *Message) ProtoReflect() protoreflect.Message {
-	mi := &file_user_events_proto_msgTypes[0]
+	mi := &file_events_proto_msgTypes[0]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -181,7 +184,7 @@ func (x *Message) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use Message.ProtoReflect.Descriptor instead.
 func (*Message) Descriptor() ([]byte, []int) {
-	return file_user_events_proto_rawDescGZIP(), []int{0}
+	return file_events_proto_rawDescGZIP(), []int{0}
 }
 
 func (x *Message) GetId() string {
@@ -315,7 +318,7 @@ type UserCreatedData struct {
 
 func (x *UserCreatedData) Reset() {
 	*x = UserCreatedData{}
-	mi := &file_user_events_proto_msgTypes[1]
+	mi := &file_events_proto_msgTypes[1]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -327,7 +330,7 @@ func (x *UserCreatedData) String() string {
 func (*UserCreatedData) ProtoMessage() {}
 
 func (x *UserCreatedData) ProtoReflect() protoreflect.Message {
-	mi := &file_user_events_proto_msgTypes[1]
+	mi := &file_events_proto_msgTypes[1]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -340,7 +343,7 @@ func (x *UserCreatedData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserCreatedData.ProtoReflect.Descriptor instead.
 func (*UserCreatedData) Descriptor() ([]byte, []int) {
-	return file_user_events_proto_rawDescGZIP(), []int{1}
+	return file_events_proto_rawDescGZIP(), []int{1}
 }
 
 func (x *UserCreatedData) GetUserId() string {
@@ -375,7 +378,7 @@ type UserUpdatedData struct {
 
 func (x *UserUpdatedData) Reset() {
 	*x = UserUpdatedData{}
-	mi := &file_user_events_proto_msgTypes[2]
+	mi := &file_events_proto_msgTypes[2]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -387,7 +390,7 @@ func (x *UserUpdatedData) String() string {
 func (*UserUpdatedData) ProtoMessage() {}
 
 func (x *UserUpdatedData) ProtoReflect() protoreflect.Message {
-	mi := &file_user_events_proto_msgTypes[2]
+	mi := &file_events_proto_msgTypes[2]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -400,7 +403,7 @@ func (x *UserUpdatedData) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserUpdatedData.ProtoReflect.Descriptor instead.
 func (*UserUpdatedData) Descriptor() ([]byte, []int) {
-	return file_user_events_proto_rawDescGZIP(), []int{2}
+	return file_events_proto_rawDescGZIP(), []int{2}
 }
 
 func (x *UserUpdatedData) GetUserId() string {
@@ -433,7 +436,7 @@ type UserTest struct {
 
 func (x *UserTest) Reset() {
 	*x = UserTest{}
-	mi := &file_user_events_proto_msgTypes[3]
+	mi := &file_events_proto_msgTypes[3]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -445,7 +448,7 @@ func (x *UserTest) String() string {
 func (*UserTest) ProtoMessage() {}
 
 func (x *UserTest) ProtoReflect() protoreflect.Message {
-	mi := &file_user_events_proto_msgTypes[3]
+	mi := &file_events_proto_msgTypes[3]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -458,7 +461,7 @@ func (x *UserTest) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use UserTest.ProtoReflect.Descriptor instead.
 func (*UserTest) Descriptor() ([]byte, []int) {
-	return file_user_events_proto_rawDescGZIP(), []int{3}
+	return file_events_proto_rawDescGZIP(), []int{3}
 }
 
 func (x *UserTest) GetUsername() string {
@@ -468,27 +471,27 @@ func (x *UserTest) GetUsername() string {
 	return ""
 }
 
-var File_user_events_proto protoreflect.FileDescriptor
+var File_events_proto protoreflect.FileDescriptor
 
-const file_user_events_proto_rawDesc = "" +
+const file_events_proto_rawDesc = "" +
 	"\n" +
-	"\x11user_events.proto\x12\vuser_events\x1a\x1fgoogle/protobuf/timestamp.proto\"\xa0\x05\n" +
+	"\fevents.proto\x12\x06events\x1a\x1fgoogle/protobuf/timestamp.proto\"\xfd\x04\n" +
 	"\aMessage\x12\x0e\n" +
-	"\x02id\x18\x01 \x01(\tR\x02id\x12,\n" +
-	"\x04type\x18\x02 \x01(\x0e2\x18.user_events.MessageTypeR\x04type\x124\n" +
-	"\acreated\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\acreated\x12;\n" +
-	"\ffrom_service\x18\x04 \x01(\x0e2\x18.user_events.ServiceTypeR\vfromService\x129\n" +
-	"\vto_services\x18\x05 \x03(\x0e2\x18.user_events.ServiceTypeR\n" +
+	"\x02id\x18\x01 \x01(\tR\x02id\x12'\n" +
+	"\x04type\x18\x02 \x01(\x0e2\x13.events.MessageTypeR\x04type\x124\n" +
+	"\acreated\x18\x03 \x01(\v2\x1a.google.protobuf.TimestampR\acreated\x126\n" +
+	"\ffrom_service\x18\x04 \x01(\x0e2\x13.events.ServiceTypeR\vfromService\x124\n" +
+	"\vto_services\x18\x05 \x03(\x0e2\x13.events.ServiceTypeR\n" +
 	"toServices\x12\x1a\n" +
-	"\bpriority\x18\x06 \x01(\x05R\bpriority\x12;\n" +
-	"\aheaders\x18\a \x03(\v2!.user_events.Message.HeadersEntryR\aheaders\x12\x1a\n" +
+	"\bpriority\x18\x06 \x01(\x05R\bpriority\x126\n" +
+	"\aheaders\x18\a \x03(\v2\x1c.events.Message.HeadersEntryR\aheaders\x12\x1a\n" +
 	"\bcritical\x18\b \x01(\bR\bcritical\x12\x1f\n" +
 	"\vretry_count\x18\t \x01(\x05R\n" +
-	"retryCount\x12J\n" +
+	"retryCount\x12E\n" +
 	"\x11user_created_data\x18\n" +
-	" \x01(\v2\x1c.user_events.UserCreatedDataH\x00R\x0fuserCreatedData\x12J\n" +
-	"\x11user_updated_data\x18\v \x01(\v2\x1c.user_events.UserUpdatedDataH\x00R\x0fuserUpdatedData\x124\n" +
-	"\tuser_test\x18\f \x01(\v2\x15.user_events.UserTestH\x00R\buserTest\x1a:\n" +
+	" \x01(\v2\x17.events.UserCreatedDataH\x00R\x0fuserCreatedData\x12E\n" +
+	"\x11user_updated_data\x18\v \x01(\v2\x17.events.UserUpdatedDataH\x00R\x0fuserUpdatedData\x12/\n" +
+	"\tuser_test\x18\f \x01(\v2\x10.events.UserTestH\x00R\buserTest\x1a:\n" +
 	"\fHeadersEntry\x12\x10\n" +
 	"\x03key\x18\x01 \x01(\tR\x03key\x12\x14\n" +
 	"\x05value\x18\x02 \x01(\tR\x05value:\x028\x01B\t\n" +
@@ -507,47 +510,49 @@ const file_user_events_proto_rawDesc = "" +
 	"\x14UNKNOWN_MESSAGE_TYPE\x10\x00\x12\x10\n" +
 	"\fUSER_CREATED\x10\x01\x12\x10\n" +
 	"\fUSER_UPDATED\x10\x02\x12\x15\n" +
-	"\x11AUTH_USER_CREATED\x10\x03*k\n" +
+	"\x11AUTH_USER_CREATED\x10\x03*}\n" +
 	"\vServiceType\x12\x13\n" +
 	"\x0fUNKNOWN_SERVICE\x10\x00\x12\x10\n" +
 	"\fAUTH_SERVICE\x10\x01\x12\x10\n" +
 	"\fUSER_SERVICE\x10\x02\x12\x10\n" +
-	"\fCHAT_SERVICE\x10\x03\x12\x11\n" +
-	"\rRETRY_SERVICE\x10\x04B\x0fZ\r./user-eventsb\x06proto3"
+	"\fCHAT_SERVICE\x10\x03\x12\x10\n" +
+	"\fGAME_SERVICE\x10\x04\x12\x11\n" +
+	"\rRETRY_SERVICE\x10\x05B\n" +
+	"Z\b./eventsb\x06proto3"
 
 var (
-	file_user_events_proto_rawDescOnce sync.Once
-	file_user_events_proto_rawDescData []byte
+	file_events_proto_rawDescOnce sync.Once
+	file_events_proto_rawDescData []byte
 )
 
-func file_user_events_proto_rawDescGZIP() []byte {
-	file_user_events_proto_rawDescOnce.Do(func() {
-		file_user_events_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_user_events_proto_rawDesc), len(file_user_events_proto_rawDesc)))
+func file_events_proto_rawDescGZIP() []byte {
+	file_events_proto_rawDescOnce.Do(func() {
+		file_events_proto_rawDescData = protoimpl.X.CompressGZIP(unsafe.Slice(unsafe.StringData(file_events_proto_rawDesc), len(file_events_proto_rawDesc)))
 	})
-	return file_user_events_proto_rawDescData
+	return file_events_proto_rawDescData
 }
 
-var file_user_events_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
-var file_user_events_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
-var file_user_events_proto_goTypes = []any{
-	(MessageType)(0),              // 0: user_events.MessageType
-	(ServiceType)(0),              // 1: user_events.ServiceType
-	(*Message)(nil),               // 2: user_events.Message
-	(*UserCreatedData)(nil),       // 3: user_events.UserCreatedData
-	(*UserUpdatedData)(nil),       // 4: user_events.UserUpdatedData
-	(*UserTest)(nil),              // 5: user_events.UserTest
-	nil,                           // 6: user_events.Message.HeadersEntry
+var file_events_proto_enumTypes = make([]protoimpl.EnumInfo, 2)
+var file_events_proto_msgTypes = make([]protoimpl.MessageInfo, 5)
+var file_events_proto_goTypes = []any{
+	(MessageType)(0),              // 0: events.MessageType
+	(ServiceType)(0),              // 1: events.ServiceType
+	(*Message)(nil),               // 2: events.Message
+	(*UserCreatedData)(nil),       // 3: events.UserCreatedData
+	(*UserUpdatedData)(nil),       // 4: events.UserUpdatedData
+	(*UserTest)(nil),              // 5: events.UserTest
+	nil,                           // 6: events.Message.HeadersEntry
 	(*timestamppb.Timestamp)(nil), // 7: google.protobuf.Timestamp
 }
-var file_user_events_proto_depIdxs = []int32{
-	0, // 0: user_events.Message.type:type_name -> user_events.MessageType
-	7, // 1: user_events.Message.created:type_name -> google.protobuf.Timestamp
-	1, // 2: user_events.Message.from_service:type_name -> user_events.ServiceType
-	1, // 3: user_events.Message.to_services:type_name -> user_events.ServiceType
-	6, // 4: user_events.Message.headers:type_name -> user_events.Message.HeadersEntry
-	3, // 5: user_events.Message.user_created_data:type_name -> user_events.UserCreatedData
-	4, // 6: user_events.Message.user_updated_data:type_name -> user_events.UserUpdatedData
-	5, // 7: user_events.Message.user_test:type_name -> user_events.UserTest
+var file_events_proto_depIdxs = []int32{
+	0, // 0: events.Message.type:type_name -> events.MessageType
+	7, // 1: events.Message.created:type_name -> google.protobuf.Timestamp
+	1, // 2: events.Message.from_service:type_name -> events.ServiceType
+	1, // 3: events.Message.to_services:type_name -> events.ServiceType
+	6, // 4: events.Message.headers:type_name -> events.Message.HeadersEntry
+	3, // 5: events.Message.user_created_data:type_name -> events.UserCreatedData
+	4, // 6: events.Message.user_updated_data:type_name -> events.UserUpdatedData
+	5, // 7: events.Message.user_test:type_name -> events.UserTest
 	8, // [8:8] is the sub-list for method output_type
 	8, // [8:8] is the sub-list for method input_type
 	8, // [8:8] is the sub-list for extension type_name
@@ -555,12 +560,12 @@ var file_user_events_proto_depIdxs = []int32{
 	0, // [0:8] is the sub-list for field type_name
 }
 
-func init() { file_user_events_proto_init() }
-func file_user_events_proto_init() {
-	if File_user_events_proto != nil {
+func init() { file_events_proto_init() }
+func file_events_proto_init() {
+	if File_events_proto != nil {
 		return
 	}
-	file_user_events_proto_msgTypes[0].OneofWrappers = []any{
+	file_events_proto_msgTypes[0].OneofWrappers = []any{
 		(*Message_UserCreatedData)(nil),
 		(*Message_UserUpdatedData)(nil),
 		(*Message_UserTest)(nil),
@@ -569,18 +574,18 @@ func file_user_events_proto_init() {
 	out := protoimpl.TypeBuilder{
 		File: protoimpl.DescBuilder{
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
-			RawDescriptor: unsafe.Slice(unsafe.StringData(file_user_events_proto_rawDesc), len(file_user_events_proto_rawDesc)),
+			RawDescriptor: unsafe.Slice(unsafe.StringData(file_events_proto_rawDesc), len(file_events_proto_rawDesc)),
 			NumEnums:      2,
 			NumMessages:   5,
 			NumExtensions: 0,
 			NumServices:   0,
 		},
-		GoTypes:           file_user_events_proto_goTypes,
-		DependencyIndexes: file_user_events_proto_depIdxs,
-		EnumInfos:         file_user_events_proto_enumTypes,
-		MessageInfos:      file_user_events_proto_msgTypes,
+		GoTypes:           file_events_proto_goTypes,
+		DependencyIndexes: file_events_proto_depIdxs,
+		EnumInfos:         file_events_proto_enumTypes,
+		MessageInfos:      file_events_proto_msgTypes,
 	}.Build()
-	File_user_events_proto = out.File
-	file_user_events_proto_goTypes = nil
-	file_user_events_proto_depIdxs = nil
+	File_events_proto = out.File
+	file_events_proto_goTypes = nil
+	file_events_proto_depIdxs = nil
 }

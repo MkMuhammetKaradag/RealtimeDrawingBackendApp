@@ -1,21 +1,25 @@
 package bootstrap
 
 import (
+	"context"
 	"game-service/config"
 	"game-service/pkg/graceful"
-	"context"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
+
+	pb "shared-lib/events"
 )
 
 type App struct {
-	config         config.Config
-	postgresRepo   PostgresRepository
-	sessionManager SessionManager
-	fiberApp       *fiber.App
-	httpHandlers   map[string]interface{}
+	config          config.Config
+	postgresRepo    PostgresRepository
+	sessionManager  SessionManager
+	fiberApp        *fiber.App
+	kafka           Messaging
+	httpHandlers    map[string]interface{}
+	messageHandlers map[pb.MessageType]MessageHandler
 }
 
 func NewApp(config config.Config) *App {
@@ -29,7 +33,9 @@ func NewApp(config config.Config) *App {
 func (a *App) initDependencies() {
 	a.postgresRepo = InitDatabase(a.config)
 	a.sessionManager = InitSessionRedis(a.config)
-	a.httpHandlers = SetupHTTPHandlers(a.postgresRepo, a.sessionManager)
+	a.messageHandlers = SetupMessageHandlers(a.postgresRepo)
+	a.kafka = SetupMessaging(a.messageHandlers, a.config)
+	a.httpHandlers = SetupHTTPHandlers(a.postgresRepo, a.sessionManager, a.kafka)
 	a.fiberApp = SetupServer(a.config, a.httpHandlers)
 }
 

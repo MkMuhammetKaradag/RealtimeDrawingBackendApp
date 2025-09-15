@@ -4,8 +4,8 @@ import (
 	"log"
 	"time"
 
+	pb "shared-lib/events"
 	"shared-lib/messaging"
-	pb "shared-lib/user-events"
 )
 
 func InitMessaging() *messaging.KafkaClient {

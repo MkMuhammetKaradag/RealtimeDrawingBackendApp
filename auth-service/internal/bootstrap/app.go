@@ -6,7 +6,7 @@ import (
 	"context"
 	"time"
 
-	pb "shared-lib/user-events"
+	pb "shared-lib/events"
 
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"

@@ -1,7 +1,7 @@
 package messaging
 
 import (
-	pb "shared-lib/user-events" // Oluşturulan protobuf paketi
+	pb "shared-lib/events" // Oluşturulan protobuf paketi
 	"time"
 )
 

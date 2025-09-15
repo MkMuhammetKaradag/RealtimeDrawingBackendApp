@@ -5,7 +5,7 @@ import (
 	"context"
 	"time"
 
-	pb "shared-lib/user-events"
+	pb "shared-lib/events"
 
 	"github.com/google/uuid"
 )

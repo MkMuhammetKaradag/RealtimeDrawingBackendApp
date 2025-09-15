@@ -3,7 +3,7 @@ package bootstrap
 import (
 	authHandler "auth-service/internal/api/handler"
 	authUsecase "auth-service/internal/api/usecase"
-	pb "shared-lib/user-events"
+	pb "shared-lib/events"
 )
 
 func SetupHTTPHandlers(postgresRepository PostgresRepository, sessionManager SessionManager, kafka Messaging) map[string]interface{} {

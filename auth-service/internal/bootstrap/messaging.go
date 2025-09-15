@@ -5,7 +5,7 @@ import (
 	"auth-service/internal/initializer"
 	"context"
 
-	pb "shared-lib/user-events"
+	pb "shared-lib/events"
 )
 
 type Messaging interface {

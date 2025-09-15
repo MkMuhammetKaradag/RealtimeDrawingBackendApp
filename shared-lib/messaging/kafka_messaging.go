@@ -15,7 +15,7 @@ import (
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 
-	pb "shared-lib/user-events" // Oluşturulan protobuf paketi
+	pb "shared-lib/events" // Oluşturulan protobuf paketi
 )
 
 type QuietKafkaLogger struct{}
