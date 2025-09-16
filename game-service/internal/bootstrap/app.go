@@ -20,6 +20,8 @@ type App struct {
 	kafka           Messaging
 	httpHandlers    map[string]interface{}
 	messageHandlers map[pb.MessageType]MessageHandler
+
+	wsHandlers map[string]interface{}
 }
 
 func NewApp(config config.Config) *App {
@@ -36,7 +38,8 @@ func (a *App) initDependencies() {
 	a.messageHandlers = SetupMessageHandlers(a.postgresRepo)
 	a.kafka = SetupMessaging(a.messageHandlers, a.config)
 	a.httpHandlers = SetupHTTPHandlers(a.postgresRepo, a.sessionManager, a.kafka)
-	a.fiberApp = SetupServer(a.config, a.httpHandlers)
+	a.wsHandlers = SetupWSHandlers(a.postgresRepo, a.sessionManager)
+	a.fiberApp = SetupServer(a.config, a.httpHandlers, a.wsHandlers)
 }
 
 func (a *App) Start() {

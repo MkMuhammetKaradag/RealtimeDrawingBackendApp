@@ -1,11 +1,13 @@
 package handler
 
 import (
+	"context"
 	"errors"
 
 	"game-service/domain"
 
 	"github.com/go-playground/validator/v10"
+	"github.com/gofiber/contrib/websocket"
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
@@ -86,4 +88,12 @@ func parseRequest[R any](c *fiber.Ctx, req *R) error {
 	}
 
 	return nil
+}
+func HandleWithFiberWS[R Request](handler FiberWSHandler[R]) fiber.Handler {
+	return websocket.New(func(c *websocket.Conn) {
+		var req R
+		ctx := context.Background()
+
+		handler.HandleWS(c, ctx, &req)
+	})
 }

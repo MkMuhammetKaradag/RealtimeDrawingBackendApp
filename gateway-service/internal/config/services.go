@@ -14,6 +14,7 @@ func getEnv(key, def string) string {
 var Services = map[string]string{
 	"auth": getEnv("GATEWAY_AUTH_HTTP", "http://localhost:8081"),
 	"chat": getEnv("GATEWAY_CHAT_HTTP", "http://chat-service:8082"),
+	"game": getEnv("GATEWAY_GAME_HTTP", "http:/game-service:8083"),
 }
 
 var ProtectedRoutes = map[string][]string{
@@ -25,4 +26,5 @@ var ProtectedRoutes = map[string][]string{
 
 var WebSocketServices = map[string]string{
 	"wsauth": getEnv("GATEWAY_AUTH_WS", "ws://auth-service:8081"),
+	"wsgame": getEnv("GATEWAY_GAME_WS", "ws://localhost:8083"),
 }
