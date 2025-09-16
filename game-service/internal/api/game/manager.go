@@ -20,8 +20,8 @@ func NewRoomManager() *RoomManager {
 }
 
 // CreateRoom, yeni bir oyun odası oluşturur ve yöneticiye ekler.
-func (rm *RoomManager) CreateRoom(name string, mode, maxPlayers int) *Room {
-	room := NewRoom(name, mode, maxPlayers)
+func (rm *RoomManager) CreateRoom(name string, mode, maxPlayers int, createrID string) *Room {
+	room := NewRoom(name, mode, maxPlayers, createrID)
 	rm.mu.Lock()
 	defer rm.mu.Unlock()
 	rm.Rooms[room.ID] = room

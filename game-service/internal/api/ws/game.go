@@ -22,6 +22,14 @@ type WebSocketRequest struct {
 	RoomID string          `json:"roomId,omitempty"`
 }
 
+type KickRequest struct {
+	PlayerID string `json:"playerID"`
+}
+
+type BanRequest struct {
+	PlayerID string `json:"playerID"`
+}
+
 // WebSocketHandler, WebSocket bağlantılarını ve mesaj akışını yönetir.
 type WebSocketHandler struct {
 	roomManager *game.RoomManager
@@ -98,7 +106,7 @@ func (h *WebSocketHandler) HandleWS(c *websocket.Conn, ctx context.Context, req 
 				log.Println("Oda oluşturma verisi hatası:", err)
 				continue
 			}
-			newRoom := h.roomManager.CreateRoom(roomData.Name, roomData.Mode, roomData.MaxPlayers)
+			newRoom := h.roomManager.CreateRoom(roomData.Name, roomData.Mode, roomData.MaxPlayers, player.ID)
 			newRoom.AddPlayer(player)
 
 			// Oyuncuya odaya katıldığını bildir
@@ -118,6 +126,14 @@ func (h *WebSocketHandler) HandleWS(c *websocket.Conn, ctx context.Context, req 
 				errMsg := map[string]string{"type": "error", "message": "Oda bulunamadı."}
 				jsonMsg, _ := json.Marshal(errMsg)
 				c.WriteMessage(websocket.TextMessage, jsonMsg)
+				continue
+			}
+			// BAN KONTROLÜ: Oyuncunun banlı olup olmadığını kontrol et
+			if room.IsBanned(player.ID) {
+				errMsg := map[string]string{"type": "error", "message": "Bu odaya girişin yasaklandı."}
+				jsonMsg, _ := json.Marshal(errMsg)
+				c.WriteMessage(websocket.TextMessage, jsonMsg)
+				c.Close() // Bağlantıyı hemen kapat
 				continue
 			}
 			room.AddPlayer(player)
@@ -142,6 +158,92 @@ func (h *WebSocketHandler) HandleWS(c *websocket.Conn, ctx context.Context, req 
 				// Çizim verisini diğer oyunculara gönder
 				room.BroadcastMessage(mt, rawMsg)
 			}
+
+		case "kick_player":
+			var banReq KickRequest
+			if err := json.Unmarshal(req.Data, &banReq); err != nil {
+				log.Println("Ban verisi hatası:", err)
+				continue
+			}
+
+			// İsteği yapan oyuncunun kimliği
+			requesterID := player.ID
+
+			// Oyuncunun bulunduğu odayı bul
+			room := h.roomManager.FindRoomByPlayerID(requesterID)
+			if room == nil {
+				errMsg := map[string]string{"type": "error", "message": "Oda bulunamadı veya yetkiniz yok."}
+				jsonMsg, _ := json.Marshal(errMsg)
+				c.WriteMessage(websocket.TextMessage, jsonMsg)
+				continue
+			}
+
+			// YETKİLENDİRME KONTROLÜ
+			// İsteği yapan oyuncunun oda sahibi olup olmadığını kontrol et.
+			if room.CreatorID != requesterID {
+				errMsg := map[string]string{"type": "error", "message": "Bu işlemi yapmaya yetkiniz yok."}
+				jsonMsg, _ := json.Marshal(errMsg)
+				c.WriteMessage(websocket.TextMessage, jsonMsg)
+				continue
+			}
+
+			// Kick işlemi için hedef oyuncunun odada olup olmadığını kontrol et.
+			// Kendini kick'lemeye çalışmasını da engelle.
+			if requesterID == banReq.PlayerID {
+				errMsg := map[string]string{"type": "error", "message": "Kendinizi odadan atamazsınız."}
+				jsonMsg, _ := json.Marshal(errMsg)
+				c.WriteMessage(websocket.TextMessage, jsonMsg)
+				continue
+			}
+
+			// Kick işlemini gerçekleştir
+			if err := room.BanPlayer(banReq.PlayerID); err != nil {
+				log.Printf("Ban işlemi başarısız: %v", err)
+				errMsg := map[string]string{"type": "error", "message": err.Error()}
+				jsonMsg, _ := json.Marshal(errMsg)
+				c.WriteMessage(websocket.TextMessage, jsonMsg)
+				continue
+			}
+
+			// Odaya, bir oyuncunun banlandığına dair mesajı yayınla
+			banMessage := map[string]string{
+				"type": "player_banned",
+				"data": fmt.Sprintf("Oyuncu %s odadan atıldı ve banlandı.", banReq.PlayerID),
+			}
+			jsonMsg, _ := json.Marshal(banMessage)
+			room.BroadcastMessage(websocket.TextMessage, jsonMsg)
+		case "unban_player":
+			var unbanReq BanRequest
+			if err := json.Unmarshal(req.Data, &unbanReq); err != nil {
+				log.Println("Ban verisi hatası:", err)
+				continue
+			}
+
+			// Yetki kontrolü (oda sahibi mi?)
+			requesterID := player.ID
+			room := h.roomManager.FindRoomByPlayerID(requesterID)
+			if room == nil || room.CreatorID != requesterID {
+				errMsg := map[string]string{"type": "error", "message": "Bu işlemi yapmaya yetkiniz yok."}
+				jsonMsg, _ := json.Marshal(errMsg)
+				c.WriteMessage(websocket.TextMessage, jsonMsg)
+				continue
+			}
+
+			// Banı kaldır
+			if err := room.UnbanPlayer(unbanReq.PlayerID); err != nil {
+				errMsg := map[string]string{"type": "error", "message": err.Error()}
+				jsonMsg, _ := json.Marshal(errMsg)
+				c.WriteMessage(websocket.TextMessage, jsonMsg)
+				continue
+			}
+
+			// Odaya, bir oyuncunun banının kaldırıldığına dair mesajı yayınla
+			unbanMessage := map[string]string{
+				"type": "player_unbanned",
+				"data": fmt.Sprintf("Oyuncu %s banı kaldırıldı.", unbanReq.PlayerID),
+			}
+			jsonMsg, _ := json.Marshal(unbanMessage)
+			room.BroadcastMessage(websocket.TextMessage, jsonMsg)
 		}
 	}
 }
