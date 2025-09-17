@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/gofiber/fiber/v2"
+	"github.com/gofiber/fiber/v2/middleware/cors"
 	"github.com/gofiber/fiber/v2/middleware/requestid"
 )
 
@@ -22,7 +23,14 @@ func NewFiberApp(cfg Config) *fiber.App {
 		WriteTimeout: cfg.WriteTimeout,
 		Concurrency:  256 * 1024,
 	})
-
+	app.Use(cors.New(cors.Config{
+		// Frontend'inin tam adresini buraya yaz.
+		// Bu, * yerine geçen ve kimlik bilgilerini göndermeye izin veren adrestir.
+		AllowOrigins:     "http://localhost:5173",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
+		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
+		AllowCredentials: true,
+	}))
 	app.Use(requestid.New())
 
 	// basic health endpoint

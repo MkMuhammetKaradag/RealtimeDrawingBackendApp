@@ -36,11 +36,18 @@ func (gs *GatewayServer) Start(port string) error {
 	app := fiber.New()
 
 	// Global middleware'leri ekle
+
+	app.Use(cors.New(cors.Config{
+		// Frontend'inin tam adresini buraya yaz.
+		// Bu, * yerine geçen ve kimlik bilgilerini göndermeye izin veren adrestir.
+		AllowOrigins:     "http://localhost:5173",
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
+		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
+		AllowCredentials: true,
+	}))
 	app.Use(requestid.New())
 	app.Use(logger.New())  // Loglama middleware'i
 	app.Use(recover.New()) // Panic recovery middleware'i
-	app.Use(cors.New())    // CORS middleware'i
-
 	// HTTP route'larını kaydet
 	// routes.RegisterHTTPRoutes(app, gs.rateLimiter)
 	routes.RegisterRoutes(app, gs.rateLimiter)
