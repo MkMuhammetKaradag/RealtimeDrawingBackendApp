@@ -2,6 +2,8 @@ package middleware
 
 import (
 	"gateway-service/internal/config"
+	"io/ioutil"
+	"net/http"
 	"strings"
 
 	"github.com/gofiber/fiber/v2"
@@ -11,14 +13,51 @@ func AuthGuard() fiber.Handler {
 	return func(c *fiber.Ctx) error {
 		serviceName, _ := c.Locals("service_name").(string)
 		path := c.Path()
+		var refreshNeededHeader string
 
 		if isProtected(serviceName, strings.TrimPrefix(path, "/"+serviceName)) {
-			// Require Authorization header or Session cookie
-			if c.Get("Authorization") == "" && c.Cookies("Session") == "" {
+			token := c.Cookies("Session")
+			if token == "" {
 				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 			}
+
+			req, err := http.NewRequest("GET", "http://localhost:8081/validate-token", nil)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal server error"})
+			}
+			req.AddCookie(&http.Cookie{Name: "Session", Value: token})
+
+			client := &http.Client{}
+			resp, err := client.Do(req)
+			if err != nil {
+				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "auth service is unavailable"})
+			}
+			defer resp.Body.Close()
+
+			if resp.StatusCode != http.StatusOK {
+				body, _ := ioutil.ReadAll(resp.Body)
+				return c.Status(resp.StatusCode).Send(body)
+			}
+
+			// Auth servisinden gelen "x-refresh-needed" başlığını sakla
+			if refreshNeeded := resp.Header.Get("X-Refresh-Needed"); refreshNeeded == "true" {
+				refreshNeededHeader = "true"
+			}
 		}
-		return c.Next()
+
+		// İsteği sonraki handler'a devret
+		// Bu, orijinal isteği hedef servise yönlendirir.
+		if err := c.Next(); err != nil {
+			return err
+		}
+
+		// Eğer refreshNeededHeader değeri "true" ise, nihai yanıta ekle
+		if refreshNeededHeader == "true" {
+			c.Response().Header.Set("X-Refresh-Needed", "true")
+			c.Response().Header.Set("Access-Control-Expose-Headers", "X-Refresh-Needed")
+		}
+
+		return nil
 	}
 }
 

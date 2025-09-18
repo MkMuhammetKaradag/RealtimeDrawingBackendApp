@@ -24,11 +24,11 @@ func NewAllLogoutHandler(usecase usecase.AllLogoutUseCase) *AllLogoutHandler {
 	}
 }
 
-func (h *AllLogoutHandler) Handle(fbrCtx *fiber.Ctx, ctx context.Context, req *AllLogoutRequest) (*AllLogoutResponse, error) {
-	err := h.usecase.Execute(fbrCtx, ctx)
+func (h *AllLogoutHandler) Handle(fbrCtx *fiber.Ctx, ctx context.Context, req *AllLogoutRequest) (*AllLogoutResponse, int,error) {
+	status,err := h.usecase.Execute(fbrCtx, ctx)
 	if err != nil {
-		return nil, err
+		return nil,status, err
 	}
 
-	return &AllLogoutResponse{Message: "all logout user "}, nil
+	return &AllLogoutResponse{Message: "all logout user "},status, nil
 }

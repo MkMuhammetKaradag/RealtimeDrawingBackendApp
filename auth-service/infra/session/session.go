@@ -67,7 +67,7 @@ func (sm *SessionManager) CreateSession(ctx context.Context, token string, data 
 func (sm *SessionManager) GetSession(ctx context.Context, token string) (*domain.SessionData, error) {
 	val, err := sm.client.Get(ctx, token).Result()
 	if err == redis.Nil {
-		return nil, nil // Oturum bulunamadı
+		return nil, domain.ErrUnauthorized // Oturum bulunamadı
 	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to get session data for token %s: %w", token, err)
@@ -163,4 +163,15 @@ func (sm *SessionManager) UpdateSession(ctx context.Context, oldToken, newToken 
 	}
 
 	return nil
+}
+func (sm *SessionManager) GetTokenTTL(ctx context.Context, token string) (time.Duration, error) {
+	ttl, err := sm.client.TTL(ctx, token).Result()
+	if err == redis.Nil {
+		// Redis'te böyle bir anahtar yoksa veya süresi dolduysa
+		return 0, nil
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to get token TTL: %w", err)
+	}
+	return ttl, nil
 }

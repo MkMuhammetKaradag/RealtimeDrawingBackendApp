@@ -26,11 +26,11 @@ func NewSignInHandler(usecase usecase.SignInUseCase) *SignInHandler {
 	}
 }
 
-func (h *SignInHandler) Handle(fbrCtx *fiber.Ctx, ctx context.Context, req *SignInRequest) (*SignInResponse, error) {
-	user, err := h.usecase.Execute(fbrCtx, ctx, req.Identifier, req.Password)
+func (h *SignInHandler) Handle(fbrCtx *fiber.Ctx, ctx context.Context, req *SignInRequest) (*SignInResponse,int, error) {
+	user,status, err := h.usecase.Execute(fbrCtx, ctx, req.Identifier, req.Password)
 	if err != nil {
-		return nil, err
+		return nil, status,err
 	}
 
-	return &SignInResponse{User: user}, nil
+	return &SignInResponse{User: user},status, nil
 }

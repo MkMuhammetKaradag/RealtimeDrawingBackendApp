@@ -25,15 +25,15 @@ func NewSignUpHandler(usecase usecase.SignUpUseCase) *SignUpHandler {
 	}
 }
 
-func (h *SignUpHandler) Handle(ctx context.Context, req *SignUpRequest) (*SignUpResponse, error) {
-	err := h.usecase.Execute(ctx, &domain.User{
+func (h *SignUpHandler) Handle(ctx context.Context, req *SignUpRequest) (*SignUpResponse,int, error) {
+	status,err := h.usecase.Execute(ctx, &domain.User{
 		Username: req.Username,
 		Email:    req.Email,
 		Password: req.Password,
 	})
 	if err != nil {
-		return nil, err
+		return nil,status, err
 	}
 
-	return &SignUpResponse{Message: " Please check your email"}, nil
+	return &SignUpResponse{Message: " Please check your email"}, status,nil
 }

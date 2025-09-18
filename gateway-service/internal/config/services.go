@@ -21,6 +21,7 @@ var ProtectedRoutes = map[string][]string{
 	"auth": {
 		"/logout",
 		"/all-logout",
+		"/hello",
 	},
 }
 

@@ -26,13 +26,17 @@ func SetupHTTPHandlers(postgresRepository PostgresRepository, sessionManager Ses
 	refreshTokenUseCase := authUsecase.NewRefreshTokenUseCase(sessionManager)
 	refreshTokenHandler := authHandler.NewRefreshTokenHandler(refreshTokenUseCase)
 
+	validateTokenUseCase := authUsecase.NewValidateTokenUseCase(sessionManager)
+	validateTokenHandler := authHandler.NewValidateTokenHandler(validateTokenUseCase)
+
 	return map[string]interface{}{
-		"signup":        signUpHandler,
-		"activate":      activateHandler,
-		"signin":        signInHandler,
-		"logout":        logoutHandler,
-		"all-logout":    allLogoutHandler,
-		"refresh-token": refreshTokenHandler,
+		"signup":         signUpHandler,
+		"activate":       activateHandler,
+		"signin":         signInHandler,
+		"logout":         logoutHandler,
+		"all-logout":     allLogoutHandler,
+		"refresh-token":  refreshTokenHandler,
+		"validate-token": validateTokenHandler,
 	}
 }
 func SetupMessageHandlers() map[pb.MessageType]MessageHandler {

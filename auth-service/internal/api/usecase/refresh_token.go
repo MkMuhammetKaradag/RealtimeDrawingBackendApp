@@ -3,6 +3,7 @@ package usecase
 import (
 	"auth-service/domain"
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gofiber/fiber/v2"
@@ -14,7 +15,7 @@ type refreshTokenUseCase struct {
 }
 
 type RefreshTokenUseCase interface {
-	Execute(fbrCtx *fiber.Ctx, ctx context.Context) (string, error)
+	Execute(fbrCtx *fiber.Ctx, ctx context.Context) (string, int, error)
 }
 
 func NewRefreshTokenUseCase(sessionManager SessionManager) RefreshTokenUseCase {
@@ -23,17 +24,17 @@ func NewRefreshTokenUseCase(sessionManager SessionManager) RefreshTokenUseCase {
 	}
 }
 
-func (u *refreshTokenUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context) (string, error) {
+func (u *refreshTokenUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context) (string, int, error) {
 	// 1. Eski token'ı al
 	oldToken := fbrCtx.Cookies("Session")
 	if oldToken == "" {
-		return "", fiber.NewError(fiber.StatusUnauthorized, "no session token found")
+		return "", fiber.StatusUnauthorized, fmt.Errorf("no session token found")
 	}
 
 	// 2. Oturum verilerini al ve kontrol et
 	sessionData, err := u.sessionManager.GetSession(ctx, oldToken)
 	if err != nil || sessionData == nil {
-		return "", fiber.NewError(fiber.StatusUnauthorized, "session expired or invalid, please sign in again")
+		return "", fiber.StatusUnauthorized, fmt.Errorf("session expired or invalid, please sign in again")
 	}
 
 	// 3. Cihaz ve IP kontrolü
@@ -41,7 +42,7 @@ func (u *refreshTokenUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context) (s
 	ip := fbrCtx.IP()
 
 	if sessionData.Device != device || sessionData.Ip != ip {
-		return "", fiber.NewError(fiber.StatusUnauthorized, "device or IP mismatch, please sign in again")
+		return "", fiber.StatusUnauthorized, fmt.Errorf("device or IP mismatch, please sign in again")
 	}
 
 	// 4. Maksimum oturum süresi kontrolü (1 hafta)
@@ -49,7 +50,7 @@ func (u *refreshTokenUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context) (s
 	if time.Since(sessionData.CreatedAt) > maxSessionDuration {
 		// Oturumu sil ve hata döndür
 		_ = u.sessionManager.DeleteSession(ctx, oldToken) // Hata yönetimi burada daha detaylı olabilir
-		return "", fiber.NewError(fiber.StatusUnauthorized, "maximum session duration exceeded, please sign in again")
+		return "", fiber.StatusUnauthorized, fmt.Errorf("maximum session duration exceeded, please sign in again")
 	}
 
 	// 5. Yeni token oluştur ve oturumu güncelle
@@ -62,8 +63,8 @@ func (u *refreshTokenUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context) (s
 		CreatedAt: sessionData.CreatedAt, // Oluşturulma zamanı değişmez
 	}
 	// Oturumu 24 saat daha uzat
-	if err := u.sessionManager.UpdateSession(ctx, oldToken, newToken, newSessionData, 24*time.Hour); err != nil {
-		return "", fiber.NewError(fiber.StatusInternalServerError, "failed to refresh session")
+	if err := u.sessionManager.UpdateSession(ctx, oldToken, newToken, newSessionData, 2*time.Minute); err != nil {
+		return "", fiber.StatusInternalServerError, fmt.Errorf("failed to refresh session")
 	}
 
 	// 6. Yeni token'ı cookie olarak ayarla
@@ -77,5 +78,5 @@ func (u *refreshTokenUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context) (s
 		SameSite: "Lax",
 	})
 
-	return newToken, nil
+	return newToken, fiber.StatusOK, nil
 }

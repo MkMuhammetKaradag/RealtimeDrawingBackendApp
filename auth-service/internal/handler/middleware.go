@@ -3,8 +3,6 @@ package handler
 import (
 	"errors"
 
-	"auth-service/domain"
-
 	"github.com/go-playground/validator/v10"
 	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
@@ -25,17 +23,12 @@ func HandleBasic[R Request, Res Response](handler BasicHandler[R, Res]) fiber.Ha
 		}
 
 		ctx := c.UserContext()
-		res, err := handler.Handle(ctx, &req)
+		res, status, err := handler.Handle(ctx, &req)
 
 		if err != nil {
 			zap.L().Error("Failed to handle request", zap.Error(err))
 
-			switch {
-			case errors.Is(err, domain.ErrDuplicateResource):
-				return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "resource already exists"})
-			default:
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
-			}
+			return c.Status(status).JSON(fiber.Map{"error": err.Error()})
 		}
 
 		return c.JSON(res)
@@ -54,16 +47,11 @@ func HandleWithFiber[R Request, Res Response](handler FiberHandler[R, Res]) fibe
 		}
 
 		ctx := c.UserContext()
-		res, err := handler.Handle(c, ctx, &req)
+		res, status, err := handler.Handle(c, ctx, &req)
 
 		if err != nil {
-
-			switch {
-			case errors.Is(err, domain.ErrDuplicateResource):
-				return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": "resource already exists"})
-			default:
-				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
-			}
+			zap.L().Error("Failed to handle request", zap.Error(err))
+			return c.Status(status).JSON(fiber.Map{"error": err.Error()})
 		}
 		return c.JSON(res)
 	}

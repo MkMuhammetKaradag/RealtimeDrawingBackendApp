@@ -9,4 +9,6 @@ var (
 	ErrForbidden         = errors.New("forbidden")
 	ErrNotFound          = errors.New("not found")
 	ErrConflict          = errors.New("conflict")
+	ErrSessionExpired    = errors.New("session has expired")
+	ErrSessionNotFound   = errors.New("session not found")
 )

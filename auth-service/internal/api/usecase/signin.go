@@ -14,7 +14,7 @@ type signInUseCase struct {
 	sesionManager      SessionManager
 }
 type SignInUseCase interface {
-	Execute(fbrCtx *fiber.Ctx, ctx context.Context, identifier, password string) (*domain.User, error)
+	Execute(fbrCtx *fiber.Ctx, ctx context.Context, identifier, password string) (*domain.User, int, error)
 }
 
 func NewSignInUseCase(repository PostgresRepository, sesionManager SessionManager) SignInUseCase {
@@ -24,10 +24,10 @@ func NewSignInUseCase(repository PostgresRepository, sesionManager SessionManage
 	}
 }
 
-func (u *signInUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context, identifier, password string) (*domain.User, error) {
+func (u *signInUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context, identifier, password string) (*domain.User, int, error) {
 	user, err := u.postgresRepository.SignIn(ctx, identifier, password)
 	if err != nil {
-		return nil, err
+		return nil, fiber.StatusInternalServerError, err
 	}
 	sessionToken := uuid.New().String()
 	device := fbrCtx.Get("User-Agent")
@@ -40,8 +40,8 @@ func (u *signInUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context, identifi
 		Ip:        ip,
 		CreatedAt: time.Now(),
 	}
-	if err := u.sesionManager.CreateSession(ctx, sessionToken, userData, 24*time.Hour); err != nil {
-		return nil, err
+	if err := u.sesionManager.CreateSession(ctx, sessionToken, userData, 2*time.Minute); err != nil {
+		return nil, fiber.StatusInternalServerError, err
 	}
 	fbrCtx.Cookie(&fiber.Cookie{
 		Name:     "Session",
@@ -53,5 +53,5 @@ func (u *signInUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context, identifi
 		SameSite: "Lax",
 	})
 
-	return user, nil
+	return user, fiber.StatusOK, nil
 }

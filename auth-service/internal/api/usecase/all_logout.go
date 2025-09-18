@@ -7,7 +7,7 @@ import (
 )
 
 type AllLogoutUseCase interface {
-	Execute(fbrCtx *fiber.Ctx, ctx context.Context) error
+	Execute(fbrCtx *fiber.Ctx, ctx context.Context) (int, error)
 }
 type allLogoutUseCase struct {
 	sessionManager SessionManager
@@ -19,12 +19,12 @@ func NewAllLogoutUseCase(sessionManager SessionManager) AllLogoutUseCase {
 	}
 }
 
-func (u *allLogoutUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context) error {
+func (u *allLogoutUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context) (int, error) {
 
 	cookieSessionToken := fbrCtx.Cookies("Session")
 
 	if err := u.sessionManager.DeleteAllUserSessions(ctx, cookieSessionToken); err != nil {
-		return err
+		return fiber.StatusInternalServerError, err
 	}
 
 	fbrCtx.Cookie(&fiber.Cookie{
@@ -37,5 +37,5 @@ func (u *allLogoutUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context) error
 		SameSite: "Lax", // Cookie yazılırken ne kullandıysan aynı
 	})
 
-	return nil
+	return fiber.StatusOK, nil
 }

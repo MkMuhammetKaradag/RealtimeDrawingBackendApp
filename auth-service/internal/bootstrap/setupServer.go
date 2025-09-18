@@ -6,7 +6,6 @@ import (
 	"auth-service/internal/handler"
 	"auth-service/internal/server"
 	"fmt"
-	"log"
 
 	"time"
 
@@ -37,6 +36,7 @@ func SetupServer(config config.Config, httpHandlers map[string]interface{}) *fib
 	logoutHandler := httpHandlers["logout"].(*authhandler.LogoutHandler)
 	allLogoutHandler := httpHandlers["all-logout"].(*authhandler.AllLogoutHandler)
 	arefreshTokenHandler := httpHandlers["refresh-token"].(*authhandler.RefreshTokenHandler)
+	validateTokenHandler := httpHandlers["validate-token"].(*authhandler.ValidateTokenHandler)
 
 	app.Post("/signup", handler.HandleBasic[authhandler.SignUpRequest, authhandler.SignUpResponse](signUpHandler))
 	app.Post("/user-activate", handler.HandleBasic[authhandler.ActivateRequest, authhandler.ActivateResponse](activateHandler))
@@ -44,32 +44,12 @@ func SetupServer(config config.Config, httpHandlers map[string]interface{}) *fib
 	app.Post("/logout", handler.HandleWithFiber[authhandler.LogoutRequest, authhandler.LogoutResponse](logoutHandler))
 	app.Post("/all-logout", handler.HandleWithFiber[authhandler.AllLogoutRequest, authhandler.AllLogoutResponse](allLogoutHandler))
 	app.Post("/refresh-token", handler.HandleWithFiber[authhandler.RefreshTokenRequest, authhandler.RefreshTokenResponse](arefreshTokenHandler))
+	app.Get("/validate-token", handler.HandleWithFiber[authhandler.ValidateTokenRequest, authhandler.ValidateTokenResponse](validateTokenHandler))
 	app.Get("/hello", func(c *fiber.Ctx) error {
 
-		// İstekteki 'my_cookie' isimli cookie'nin değerini al.
-		// Eğer cookie yoksa, boş bir string döner.
-		myCookie := c.Cookies("my_cookie")
-
-		// İstekteki tüm cookie'leri döngüyle okuyup konsola yazdır.
-		// Bu, gönderilen tüm cookie'leri görmek için kullanışlıdır.
-		log.Println("Gelen tüm cookie'ler:")
-		c.Request().Header.VisitAllCookie(func(key, value []byte) {
-			log.Printf("Cookie Adı: %s, Değer: %s\n", key, value)
-		})
-
-		// Eğer belirli bir cookie varsa, değerini JSON yanıtına ekle.
-		if myCookie != "" {
-			return c.JSON(fiber.Map{
-				"message":   "Hello from Auth Service!",
-				"my_cookie": myCookie,
-				"info":      "Gönderdiğiniz cookie başarıyla alındı!",
-			})
-		}
-
-		// Eğer belirli bir cookie yoksa, farklı bir JSON yanıtı döndür.
 		return c.JSON(fiber.Map{
 			"message": "Hello from Auth Service!",
-			"info":    "Belirtilen cookie bulunamadı.",
+			"info":    "Header kontrol et",
 		})
 	})
 

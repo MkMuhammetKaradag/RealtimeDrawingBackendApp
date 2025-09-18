@@ -25,12 +25,12 @@ func NewRefreshTokenHandler(usecase usecase.RefreshTokenUseCase) *RefreshTokenHa
 	}
 }
 
-func (h *RefreshTokenHandler) Handle(fbrCtx *fiber.Ctx, ctx context.Context, req *RefreshTokenRequest) (*RefreshTokenResponse, error) {
-	token, err := h.usecase.Execute(fbrCtx, ctx)
+func (h *RefreshTokenHandler) Handle(fbrCtx *fiber.Ctx, ctx context.Context, req *RefreshTokenRequest) (*RefreshTokenResponse, int,error) {
+	token,status, err := h.usecase.Execute(fbrCtx, ctx)
 	if err != nil {
-		return nil, err
+		return nil,status, err
 	}
 	fmt.Println("token", token)
 
-	return &RefreshTokenResponse{Message: "RefreshToken user "}, nil
+	return &RefreshTokenResponse{Message: "RefreshToken user "},status, nil
 }

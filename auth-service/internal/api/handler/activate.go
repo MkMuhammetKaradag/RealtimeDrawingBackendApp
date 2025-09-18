@@ -4,6 +4,7 @@ import (
 	"auth-service/internal/api/usecase"
 	"context"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
 
@@ -25,11 +26,11 @@ func NewActivateHandler(usecase usecase.ActivateUseCase) *ActivateHandler {
 	}
 }
 
-func (h *ActivateHandler) Handle(ctx context.Context, req *ActivateRequest) (*ActivateResponse, error) {
-	err := h.usecase.Execute(ctx, req.ActivationID, req.ActivationCode)
+func (h *ActivateHandler) Handle(ctx context.Context, req *ActivateRequest) (*ActivateResponse, int, error) {
+	status, err := h.usecase.Execute(ctx, req.ActivationID, req.ActivationCode)
 	if err != nil {
-		return nil, err
+		return nil, status, err
 	}
 
-	return &ActivateResponse{Message: "user activate"}, nil
+	return &ActivateResponse{Message: "user activate"}, fiber.StatusOK, nil
 }

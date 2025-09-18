@@ -5,11 +5,12 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/gofiber/fiber/v2"
 	"go.uber.org/zap"
 )
 
 type SignUpUseCase interface {
-	Execute(ctx context.Context, user *domain.User) error
+	Execute(ctx context.Context, user *domain.User) (int, error)
 }
 type signUpUseCase struct {
 	postgresRepository PostgresRepository
@@ -27,14 +28,14 @@ func NewSignUpUseCase(repository PostgresRepository) SignUpUseCase {
 	}
 }
 
-func (u *signUpUseCase) Execute(ctx context.Context, user *domain.User) error {
+func (u *signUpUseCase) Execute(ctx context.Context, user *domain.User) (int, error) {
 
 	id, code, err := u.postgresRepository.SignUp(ctx, user)
 	if err != nil {
-		return err
+		return fiber.StatusInternalServerError, err
 	}
 
 	fmt.Printf("id:%v ,    code:%v \n", id, code)
 	zap.L().Info("signup created")
-	return nil
+	return fiber.StatusOK, nil
 }

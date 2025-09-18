@@ -7,11 +7,12 @@ import (
 
 	pb "shared-lib/events"
 
+	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
 )
 
 type ActivateUseCase interface {
-	Execute(ctx context.Context, activationID uuid.UUID, activationCode string) error
+	Execute(ctx context.Context, activationID uuid.UUID, activationCode string) (int, error)
 }
 type activateUseCase struct {
 	postgresRepository PostgresRepository
@@ -25,11 +26,11 @@ func NewActivateUseCase(repository PostgresRepository, kafka Messaging) Activate
 	}
 }
 
-func (u *activateUseCase) Execute(ctx context.Context, activationID uuid.UUID, activationCode string) error {
+func (u *activateUseCase) Execute(ctx context.Context, activationID uuid.UUID, activationCode string) (int, error) {
 
 	user, err := u.postgresRepository.Activate(ctx, activationID, activationCode)
 	if err != nil {
-		return err
+		return fiber.StatusInternalServerError, err
 	}
 	userCreatedData := &pb.UserCreatedData{
 		UserId:   user.ID,
@@ -49,5 +50,5 @@ func (u *activateUseCase) Execute(ctx context.Context, activationID uuid.UUID, a
 		log.Printf("UserCreated event published ")
 	}
 
-	return nil
+	return fiber.StatusOK, nil
 }
