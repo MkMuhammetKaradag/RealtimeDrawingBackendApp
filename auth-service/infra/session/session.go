@@ -142,3 +142,25 @@ func (sm *SessionManager) DeleteAllUserSessions(ctx context.Context, token strin
 func (sm *SessionManager) userSessionsKey(userID string) string {
 	return fmt.Sprintf("auth-service:user_sessions:%s", userID)
 }
+
+// UpdateSession, eski token'ı siler ve yeni token ile yeni bir oturum oluşturur.
+func (sm *SessionManager) UpdateSession(ctx context.Context, oldToken, newToken string, data *domain.SessionData, duration time.Duration) error {
+	pipe := sm.client.Pipeline()
+	// Eski token'ı sil
+	pipe.Del(ctx, oldToken)
+	// Yeni token ile yeni bir oturum oluştur
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		return fmt.Errorf("failed to marshal session data: %w", err)
+	}
+	pipe.Set(ctx, newToken, jsonData, duration)
+	// Kullanıcının oturum setini güncelle
+	pipe.SRem(ctx, sm.userSessionsKey(data.UserID), oldToken)
+	pipe.SAdd(ctx, sm.userSessionsKey(data.UserID), newToken)
+
+	if _, err := pipe.Exec(ctx); err != nil {
+		return fmt.Errorf("failed to update session: %w", err)
+	}
+
+	return nil
+}

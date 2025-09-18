@@ -8,10 +8,12 @@ type Session struct {
 	Device string    `json:"device"` // Kullanıcı adı
 	Ip     string    `json:"ip"`     // E-posta adresi
 	Expiry time.Time `json:"expiry"` // Oturum sona erme zamanı
+
 }
 type SessionData struct {
-	UserID   string `json:"userID"`
-	Username string `json:"username"`
-	Device   string `json:"device"`
-	Ip       string `json:"ip"`
+	UserID    string    `json:"userID"`
+	Username  string    `json:"username"`
+	Device    string    `json:"device"`
+	Ip        string    `json:"ip"`
+	CreatedAt time.Time `json:"createdAt"`
 }

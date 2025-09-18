@@ -36,12 +36,14 @@ func SetupServer(config config.Config, httpHandlers map[string]interface{}) *fib
 	signInHandler := httpHandlers["signin"].(*authhandler.SignInHandler)
 	logoutHandler := httpHandlers["logout"].(*authhandler.LogoutHandler)
 	allLogoutHandler := httpHandlers["all-logout"].(*authhandler.AllLogoutHandler)
+	arefreshTokenHandler := httpHandlers["refresh-token"].(*authhandler.RefreshTokenHandler)
 
 	app.Post("/signup", handler.HandleBasic[authhandler.SignUpRequest, authhandler.SignUpResponse](signUpHandler))
 	app.Post("/user-activate", handler.HandleBasic[authhandler.ActivateRequest, authhandler.ActivateResponse](activateHandler))
 	app.Post("/signin", handler.HandleWithFiber[authhandler.SignInRequest, authhandler.SignInResponse](signInHandler))
 	app.Post("/logout", handler.HandleWithFiber[authhandler.LogoutRequest, authhandler.LogoutResponse](logoutHandler))
 	app.Post("/all-logout", handler.HandleWithFiber[authhandler.AllLogoutRequest, authhandler.AllLogoutResponse](allLogoutHandler))
+	app.Post("/refresh-token", handler.HandleWithFiber[authhandler.RefreshTokenRequest, authhandler.RefreshTokenResponse](arefreshTokenHandler))
 	app.Get("/hello", func(c *fiber.Ctx) error {
 
 		// İstekteki 'my_cookie' isimli cookie'nin değerini al.

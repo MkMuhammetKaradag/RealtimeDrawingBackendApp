@@ -34,10 +34,11 @@ func (u *signInUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context, identifi
 	ip := fbrCtx.IP()
 
 	userData := &domain.SessionData{
-		UserID:   user.ID,
-		Device:   device,
-		Username: "boş",
-		Ip:       ip,
+		UserID:    user.ID,
+		Device:    device,
+		Username:  "boş",
+		Ip:        ip,
+		CreatedAt: time.Now(),
 	}
 	if err := u.sesionManager.CreateSession(ctx, sessionToken, userData, 24*time.Hour); err != nil {
 		return nil, err

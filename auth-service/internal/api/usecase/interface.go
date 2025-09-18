@@ -19,6 +19,8 @@ type SessionManager interface {
 	CreateSession(ctx context.Context, token string, data *domain.SessionData, duration time.Duration) error
 	DeleteSession(ctx context.Context, token string) error
 	DeleteAllUserSessions(ctx context.Context, token string) error
+	GetSession(ctx context.Context, token string) (*domain.SessionData, error)
+	UpdateSession(ctx context.Context, oldToken, newToken string, data *domain.SessionData, duration time.Duration) error
 }
 type Messaging interface {
 	Close() error
