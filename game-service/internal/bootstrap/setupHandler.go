@@ -2,6 +2,7 @@ package bootstrap
 
 import (
 	"game-service/internal/api/game"
+	httpHandler "game-service/internal/api/handler"
 	kafkaHandler "game-service/internal/api/kafka"
 	"game-service/internal/api/usecase"
 	wsHandler "game-service/internal/api/ws"
@@ -9,8 +10,11 @@ import (
 )
 
 func SetupHTTPHandlers(postgresRepository PostgresRepository, sessionManager SessionManager, kafka Messaging) map[string]interface{} {
-
-	return map[string]interface{}{}
+	createdRoomeUseCase := usecase.NewCreateRoomUseCase(postgresRepository)
+	createdRoomeHandler := httpHandler.NewCreateRoomHandler(createdRoomeUseCase)
+	return map[string]interface{}{
+		"create-room": createdRoomeHandler,
+	}
 }
 func SetupMessageHandlers(postgresRepository PostgresRepository) map[pb.MessageType]MessageHandler {
 	createdUserUseCase := usecase.NewCreateUserUseCase(postgresRepository)

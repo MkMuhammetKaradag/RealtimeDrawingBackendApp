@@ -40,7 +40,7 @@ func (u *signInUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context, identifi
 		Ip:        ip,
 		CreatedAt: time.Now(),
 	}
-	if err := u.sesionManager.CreateSession(ctx, sessionToken, userData, 2*time.Minute); err != nil {
+	if err := u.sesionManager.CreateSession(ctx, sessionToken, userData, 24*time.Hour); err != nil {
 		return nil, fiber.StatusInternalServerError, err
 	}
 	fbrCtx.Cookie(&fiber.Cookie{

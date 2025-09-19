@@ -14,7 +14,7 @@ type ValidateTokenRequest struct {
 }
 
 type ValidateTokenResponse struct {
-	UserID string `json:"userID"`
+	UserID string `json:"user_id"`
 }
 type ValidateTokenHandler struct {
 	usecase usecase.ValidateTokenUseCase
@@ -43,7 +43,7 @@ func (h *ValidateTokenHandler) Handle(fbrCtx *fiber.Ctx, ctx context.Context, re
 
 	// Yanıt başlığına yenileme sinyali ekle
 	refreshThreshold := 1 * time.Minute
-	fmt.Println("tll zaman:", ttl, "refreshThreshold:", refreshThreshold)
+	fbrCtx.Response().Header.Set("X-User-ID", sessionData.UserID)
 
 	if ttl > 0 && ttl <= refreshThreshold {
 		fmt.Println("tll zaman daralmış")

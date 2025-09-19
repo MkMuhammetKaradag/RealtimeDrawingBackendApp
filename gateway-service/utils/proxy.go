@@ -64,6 +64,11 @@ func BuildProxyHandler(serviceName string) fiber.Handler {
 			reqID = c.Locals("requestid").(string)
 		}
 		c.Request().Header.Set("X-Request-ID", reqID)
+		userID, ok := c.Locals("user_id").(string) // Locals'tan string olarak çekiyoruz
+		if ok && userID != "" {
+			// Eğer user_id varsa, onu bir HTTP başlığı olarak hedef servise gönder
+			c.Request().Header.Set("X-User-ID", userID)
+		}
 
 		// Fiber'ın kendi proxy'sini kullanarak isteği yönlendir
 		return proxy.Do(c, fullURL)

@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"gateway-service/internal/config"
 	"io/ioutil"
 	"net/http"
@@ -8,6 +9,10 @@ import (
 
 	"github.com/gofiber/fiber/v2"
 )
+
+type AuthServiceResponse struct {
+	UserID string `json:"user_id"`
+}
 
 func AuthGuard() fiber.Handler {
 	return func(c *fiber.Ctx) error {
@@ -39,6 +44,25 @@ func AuthGuard() fiber.Handler {
 				return c.Status(resp.StatusCode).Send(body)
 			}
 
+			body, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to read auth service response"})
+			}
+
+			var authResp AuthServiceResponse
+			if err := json.Unmarshal(body, &authResp); err != nil {
+				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to parse auth service response"})
+			}
+
+			// 2. Kullanıcı ID'sini al
+			userID := authResp.UserID
+
+			if userID == "" {
+				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "user ID not found in auth response"})
+			}
+
+			// 3. Kullanıcı ID'sini sonraki handler'lar için Fiber'in yerel değişkenlerine ekle
+			c.Locals("user_id", userID)
 			// Auth servisinden gelen "x-refresh-needed" başlığını sakla
 			if refreshNeeded := resp.Header.Get("X-Refresh-Needed"); refreshNeeded == "true" {
 				refreshNeededHeader = "true"

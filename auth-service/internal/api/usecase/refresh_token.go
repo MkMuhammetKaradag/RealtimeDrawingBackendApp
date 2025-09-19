@@ -63,7 +63,7 @@ func (u *refreshTokenUseCase) Execute(fbrCtx *fiber.Ctx, ctx context.Context) (s
 		CreatedAt: sessionData.CreatedAt, // Oluşturulma zamanı değişmez
 	}
 	// Oturumu 24 saat daha uzat
-	if err := u.sessionManager.UpdateSession(ctx, oldToken, newToken, newSessionData, 2*time.Minute); err != nil {
+	if err := u.sessionManager.UpdateSession(ctx, oldToken, newToken, newSessionData, 24*time.Hour); err != nil {
 		return "", fiber.StatusInternalServerError, fmt.Errorf("failed to refresh session")
 	}
 
