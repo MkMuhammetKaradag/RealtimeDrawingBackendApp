@@ -26,6 +26,10 @@ var ProtectedRoutes = map[string][]string{
 	"game": {
 		"/create-room",
 	},
+
+	"wsgame": {
+		"/ws/game/:id",
+	},
 }
 
 var WebSocketServices = map[string]string{

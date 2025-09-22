@@ -1,34 +1,35 @@
 package bootstrap
 
 import (
-	"game-service/internal/api/game"
-	httpHandler "game-service/internal/api/handler"
+	httpHandler "game-service/internal/api/http/handler"
+	httpUsecase "game-service/internal/api/http/usecase"
 	kafkaHandler "game-service/internal/api/kafka"
-	"game-service/internal/api/usecase"
-	wsHandler "game-service/internal/api/ws"
+	wsHandler "game-service/internal/api/ws/handler"
+	wsUsecase "game-service/internal/api/ws/usecase"
+
 	pb "shared-lib/events"
 )
 
 func SetupHTTPHandlers(postgresRepository PostgresRepository, sessionManager SessionManager, kafka Messaging) map[string]interface{} {
-	createdRoomeUseCase := usecase.NewCreateRoomUseCase(postgresRepository)
+	createdRoomeUseCase := httpUsecase.NewCreateRoomUseCase(postgresRepository)
 	createdRoomeHandler := httpHandler.NewCreateRoomHandler(createdRoomeUseCase)
 	return map[string]interface{}{
 		"create-room": createdRoomeHandler,
 	}
 }
 func SetupMessageHandlers(postgresRepository PostgresRepository) map[pb.MessageType]MessageHandler {
-	createdUserUseCase := usecase.NewCreateUserUseCase(postgresRepository)
+	createdUserUseCase := httpUsecase.NewCreateUserUseCase(postgresRepository)
 	createdUserHandler := kafkaHandler.NewCreatedUserHandler(createdUserUseCase)
 
 	return map[pb.MessageType]MessageHandler{
 		pb.MessageType_AUTH_USER_CREATED: createdUserHandler,
 	}
 }
-func SetupWSHandlers(postgresRepository PostgresRepository, sessionManager SessionManager) map[string]interface{} {
-	roomManager := game.NewRoomManager()
+func SetupWSHandlers(postgresRepository PostgresRepository, wsHub Hub) map[string]interface{} {
+	roomManager := wsUsecase.NewRoomManagerUseCase(wsHub, postgresRepository)
 
-	gameWebSocketHandler := wsHandler.NewWebSocketHandler(roomManager)
+	roomManagerHandler := wsHandler.NewWebSocketRoomHandler(roomManager)
 	return map[string]interface{}{
-		"game": gameWebSocketHandler,
+		"room-connect": roomManagerHandler,
 	}
 }

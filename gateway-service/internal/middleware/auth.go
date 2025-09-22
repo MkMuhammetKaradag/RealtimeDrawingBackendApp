@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"encoding/json"
+	"fmt"
 	"gateway-service/internal/config"
 	"io/ioutil"
 	"net/http"
@@ -19,17 +20,37 @@ func AuthGuard() fiber.Handler {
 		serviceName, _ := c.Locals("service_name").(string)
 		path := c.Path()
 		var refreshNeededHeader string
+		isProt := isProtected(c, serviceName, path)
+		if isProt {
+			var token string
 
-		if isProtected(serviceName, strings.TrimPrefix(path, "/"+serviceName)) {
-			token := c.Cookies("Session")
-			if token == "" {
-				return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+			if strings.Contains(c.Get("Connection"), "Upgrade") && c.Get("Upgrade") == "websocket" {
+				// WebSocket bağlantıları için token'ı query parametrelerinden veya Authorization header'ından al
+				token = c.Query("token")
+				fmt.Println("WebSocket bağlantısı tespit edildi, token kontrol ediliyor...", token)
+
+				if token == "" {
+					token = c.Get("Session")
+
+				}
+				if token == "" {
+					fmt.Println("WebSocket token veya Authorization header bulunamadı")
+					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "Unauthorized: missing token or Authorization for WebSocket"})
+				}
+			} else {
+				token = c.Cookies("Session")
+				if token == "" {
+					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+				}
 			}
+			
 
 			req, err := http.NewRequest("GET", "http://localhost:8081/validate-token", nil)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal server error"})
 			}
+			
+
 			req.AddCookie(&http.Cookie{Name: "Session", Value: token})
 
 			client := &http.Client{}
@@ -37,12 +58,15 @@ func AuthGuard() fiber.Handler {
 			if err != nil {
 				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "auth service is unavailable"})
 			}
+	
+
 			defer resp.Body.Close()
 
 			if resp.StatusCode != http.StatusOK {
 				body, _ := ioutil.ReadAll(resp.Body)
 				return c.Status(resp.StatusCode).Send(body)
 			}
+			
 
 			body, err := ioutil.ReadAll(resp.Body)
 			if err != nil {
@@ -85,13 +109,39 @@ func AuthGuard() fiber.Handler {
 	}
 }
 
-func isProtected(serviceName, path string) bool {
+func isProtected(c *fiber.Ctx, serviceName, fullPath string) bool {
+	// serviceName'e göre korumalı rotaları al
 	protectedList, ok := config.ProtectedRoutes[serviceName]
 	if !ok {
-		return false
+		return false // Servis korumalı rota listesinde yoksa, korumalı değil
 	}
-	for _, p := range protectedList {
-		if strings.HasPrefix(path, p) {
+
+	// Gelen yolun sadece servis adından sonraki kısmını al
+	path := strings.TrimPrefix(fullPath, "/"+serviceName)
+
+	// Korumalı rota listesindeki her bir desenle eşleşmeye çalış
+	for _, pattern := range protectedList {
+		// Fiber'in Path.Match'ini kullanmak en iyi yoldur
+		// Bu, ":id" gibi parametreleri doğru şekilde ele alır
+		if strings.Contains(pattern, ":") {
+			// Eğer desen parametre içeriyorsa, Fiber'in Match metodunu kullan
+			// Match metodunun kendi içinde dinamik segmentleri kontrol etme yeteneği vardır.
+			// Ancak, Path.Match kullanabilmek için rota tanımına ihtiyaç duyarız.
+			// Basitlik ve Fiber'dan bağımsızlık adına, string yerine daha genel bir yaklaşım deneyelim.
+			// Basit bir geçici çözüm:
+			// '/game/:id' -> '/game/'
+			// '/game/12347' -> '/game/'
+
+			// Daha gelişmiş ve doğru çözüm: Fiber'in kendi yönlendirme motorunu kullanmak
+			// Burada basit bir mantık ile kontrol sağlıyoruz.
+			// Örnek: "/game/:id" desenini "/game/12347" yoluyla karşılaştır.
+			// Bu, '/game/' ön ekinin uyuştuğunu kontrol etmek için yeterli olabilir.
+			if strings.HasPrefix(path, strings.Split(pattern, ":")[0]) {
+				return true
+			}
+
+		} else if strings.HasPrefix(path, pattern) {
+			// Parametresiz rotalar için eski mantık çalışmaya devam edebilir
 			return true
 		}
 	}

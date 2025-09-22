@@ -18,6 +18,7 @@ type App struct {
 	sessionManager  SessionManager
 	fiberApp        *fiber.App
 	kafka           Messaging
+	hub             Hub
 	httpHandlers    map[string]interface{}
 	messageHandlers map[pb.MessageType]MessageHandler
 
@@ -38,7 +39,8 @@ func (a *App) initDependencies() {
 	a.messageHandlers = SetupMessageHandlers(a.postgresRepo)
 	a.kafka = SetupMessaging(a.messageHandlers, a.config)
 	a.httpHandlers = SetupHTTPHandlers(a.postgresRepo, a.sessionManager, a.kafka)
-	a.wsHandlers = SetupWSHandlers(a.postgresRepo, a.sessionManager)
+	a.hub = InitWebsocket(context.Background(), a.sessionManager)
+	a.wsHandlers = SetupWSHandlers(a.postgresRepo, a.hub)
 	a.fiberApp = SetupServer(a.config, a.httpHandlers, a.wsHandlers)
 }
 

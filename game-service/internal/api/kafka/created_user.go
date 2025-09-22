@@ -3,17 +3,17 @@ package handler
 import (
 	"context"
 	"fmt"
-	"game-service/internal/api/usecase"
+	httpUsecase "game-service/internal/api/http/usecase"
 	pb "shared-lib/events"
 
 	"github.com/google/uuid"
 )
 
 type CreatedUserHandler struct {
-	usecase usecase.CreateUserUseCase
+	usecase httpUsecase.CreateUserUseCase
 }
 
-func NewCreatedUserHandler(createdUserUsecase usecase.CreateUserUseCase) *CreatedUserHandler {
+func NewCreatedUserHandler(createdUserUsecase httpUsecase.CreateUserUseCase) *CreatedUserHandler {
 	return &CreatedUserHandler{
 		usecase: createdUserUsecase,
 	}

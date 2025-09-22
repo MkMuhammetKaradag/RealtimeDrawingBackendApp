@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"game-service/domain"
-	"game-service/internal/api/usecase"
+	httpUsecase "game-service/internal/api/http/usecase"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/google/uuid"
@@ -23,10 +23,10 @@ type CreateRoomResponse struct {
 }
 
 type CreateRoomHandler struct {
-	usecase usecase.CreateRoomUseCase
+	usecase httpUsecase.CreateRoomUseCase
 }
 
-func NewCreateRoomHandler(usecase usecase.CreateRoomUseCase) *CreateRoomHandler {
+func NewCreateRoomHandler(usecase httpUsecase.CreateRoomUseCase) *CreateRoomHandler {
 	return &CreateRoomHandler{
 		usecase: usecase,
 	}

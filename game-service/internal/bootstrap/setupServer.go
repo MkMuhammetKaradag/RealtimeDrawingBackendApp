@@ -2,8 +2,8 @@ package bootstrap
 
 import (
 	"game-service/config"
-	httpGameHandler "game-service/internal/api/handler"
-	wsHandler "game-service/internal/api/ws"
+	httpGameHandler "game-service/internal/api/http/handler"
+	wsHandler "game-service/internal/api/ws/handler"
 	"game-service/internal/handler"
 	"game-service/internal/server"
 
@@ -34,8 +34,8 @@ func SetupServer(config config.Config, httpHandlers map[string]interface{}, wsHa
 	app.Post("/create-room", handler.HandleWithFiber[httpGameHandler.CreateRoomRequest, httpGameHandler.CreateRoomResponse](createRoomHandler))
 
 	wsRoute := app.Group("/ws")
-	gameHandler := wsHandlers["game"].(*wsHandler.WebSocketHandler)
-	wsRoute.Get("/game/:id", handler.HandleWithFiberWS[wsHandler.WebSocketListenRequest](gameHandler))
+	gameHandler := wsHandlers["room-connect"].(*wsHandler.WebSocketRoomHandler)
+	wsRoute.Get("/game/:room_id", handler.HandleWithFiberWS[wsHandler.WebSocketRoomRequest](gameHandler))
 
 	return app
 }

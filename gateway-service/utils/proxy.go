@@ -91,6 +91,7 @@ func BuildWebSocketProxy(serviceName string) WrbsocketHandler {
 	return func(clientConn *websocket.Conn) {
 		// Hedef path'i al
 		target := clientConn.Locals("ws_path")
+
 		targetPath := ""
 		if target != nil {
 			targetPath = "/" + target.(string)
@@ -99,7 +100,7 @@ func BuildWebSocketProxy(serviceName string) WrbsocketHandler {
 		fmt.Println("url>", url)
 		// İstek başlıklarını hazırla
 		requestHeaders := http.Header{}
-		headerKeys := []string{"Authorization", "Session", "X-Request-ID"}
+		headerKeys := []string{"Authorization", "Session", "X-Request-ID", "X-User-ID"}
 
 		for _, key := range headerKeys {
 			value := clientConn.Headers(key)
@@ -117,6 +118,13 @@ func BuildWebSocketProxy(serviceName string) WrbsocketHandler {
 		// Ensure request id
 		if requestHeaders.Get("X-Request-ID") == "" {
 			requestHeaders.Set("X-Request-ID", uuid.NewString())
+		}
+		userID, ok := clientConn.Locals("user_id").(string)
+		if ok && userID != "" {
+			fmt.Println("user id gelmiş", userID)
+
+			requestHeaders.Set("X-User-ID", userID)
+			requestHeaders.Set("userid", userID)
 		}
 
 		// Backend'e WebSocket bağlantısı kur
