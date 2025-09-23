@@ -5,18 +5,8 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
-
-type RoomManager struct {
-	RoomID uuid.UUID `json:"room_id"`
-	Type   string    `json:"type"`
-	Data   struct {
-		Type    string      `json:"type"`
-		Content interface{} `json:"content"`
-	} `json:"data"`
-}
 
 type RoomManagerHub struct {
 	redisClient *redis.Client

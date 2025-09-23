@@ -19,4 +19,5 @@ type Client struct {
 	Send           chan []byte
 	Conn           *websocket.Conn
 	WriteLock      sync.Mutex
+	Done           chan struct{}
 }

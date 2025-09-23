@@ -18,6 +18,21 @@ type Message struct {
 	Type    string      `json:"type"`
 	Content interface{} `json:"content"`
 }
+type RoomManager struct {
+	RoomID uuid.UUID `json:"room_id"`
+	Type   string    `json:"type"`
+	Data   struct {
+		Type    string      `json:"type"`
+		Content interface{} `json:"content"`
+	} `json:"data"`
+}
+
+const (
+	writeWait      = 10 * time.Second
+	pongWait       = 60 * time.Second
+	pingPeriod     = (pongWait * 9) / 10
+	maxMessageSize = 512
+)
 
 // Hub yapısı
 type Hub struct {
@@ -109,10 +124,12 @@ func (h *Hub) registerClient(client *domain.Client) {
 
 		// Eğer mevcut bir bağlantı varsa, kanalını kapat ve haritadan sil.
 		close(existingClient.Send)
+		close(existingClient.Done)
 		delete(roomClients, client.ID)
 	}
 
 	// 3. Yeni istemciyi haritaya ekle
+	client.Done = make(chan struct{}) // Done kanalını initialize et
 	roomClients[client.ID] = client
 }
 
@@ -241,7 +258,7 @@ func (h *Hub) readPump(client *domain.Client) {
 	}()
 
 	for {
-		_, _, err := client.Conn.ReadMessage()
+		messageType, payload, err := client.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				log.Println("Client connection closed gracefully.")
@@ -250,6 +267,14 @@ func (h *Hub) readPump(client *domain.Client) {
 			}
 			break
 		}
+
+		// Gelen mesajı işle
+		var msg Message
+		if err := json.Unmarshal(payload, &msg); err != nil {
+			log.Printf("Failed to unmarshal message: %v", err)
+			continue
+		}
+		fmt.Println("msg:", msg, "messagetype:", messageType)
 		// Mesaj işleme mantığı buraya gelecek.
 		// Örneğin: h.handleMessage(msg, client)
 	}
@@ -257,7 +282,9 @@ func (h *Hub) readPump(client *domain.Client) {
 
 // writePump, client'ın Send kanalına gelen mesajları yazar.
 func (h *Hub) writePump(client *domain.Client) {
+	ticker := time.NewTicker(pingPeriod)
 	defer func() {
+		ticker.Stop()
 		client.Conn.Close()
 		h.unregister <- client
 	}()
@@ -273,15 +300,28 @@ func (h *Hub) writePump(client *domain.Client) {
 
 			// Mesajı yaz
 			client.WriteLock.Lock()
+			client.Conn.SetWriteDeadline(time.Now().Add(writeWait))
 			err := client.Conn.WriteMessage(websocket.TextMessage, msg)
 			client.WriteLock.Unlock()
 			if err != nil {
 				log.Println("WebSocket write error:", err)
 				return
 			}
-		// Bağlantının ping/pong mesajlarıyla hayatta kalmasını sağlamak için ping gönder
-		case <-time.After(1 * time.Minute):
-			client.Conn.WriteMessage(websocket.PingMessage, nil)
+
+		case <-ticker.C:
+			client.WriteLock.Lock()
+			client.Conn.SetWriteDeadline(time.Now().Add(writeWait))
+			if err := client.Conn.WriteMessage(websocket.PingMessage, nil); err != nil {
+				client.WriteLock.Unlock()
+				return
+			}
+			client.WriteLock.Unlock()
+
+		case <-client.Done:
+			return
+
+			// case <-time.After(1 * time.Minute):
+			// 	client.Conn.WriteMessage(websocket.PingMessage, nil)
 		}
 	}
 }
@@ -292,26 +332,21 @@ func (h *Hub) BroadcastMessage(roomID uuid.UUID, msg *Message) {
 
 	roomClients, ok := h.roomsClients[roomID]
 	if !ok {
-		// Log a warning if the room does not exist.
 		log.Printf("Room %s not found for broadcast message.", roomID)
 		return
 	}
 
-	// Marshal the message into a JSON byte slice to be sent over the WebSocket.
-	// You need to import the "encoding/json" package and add appropriate error handling.
-	// For this example, I'll use a simple byte slice, but JSON is typical.
-	// For a more robust solution, you would use `json.Marshal` here.
-	messageBytes := []byte("A new player has joined the room!")
+	// JSON mesajını doğru şekilde oluştur
+	messageBytes, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("Failed to marshal message: %v", err)
+		return
+	}
 
-	// Iterate over the clients in the room and send the message.
 	for _, client := range roomClients {
-		// Use a non-blocking select to send the message.
-		// If the channel is full, we log a warning and don't block.
 		select {
 		case client.Send <- messageBytes:
-			// Message was sent successfully.
 		default:
-			// This case is important to avoid blocking.
 			log.Printf("Client %s's send channel is full, dropping message.", client.ID)
 		}
 	}
