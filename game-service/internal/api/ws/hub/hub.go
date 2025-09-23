@@ -2,6 +2,8 @@ package hub
 
 import (
 	"context"
+	"encoding/json"
+	"fmt"
 	"game-service/domain"
 	"log"
 	"sync"
@@ -11,6 +13,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
+
+type Message struct {
+	Type    string      `json:"type"`
+	Content interface{} `json:"content"`
+}
 
 // Hub yapısı
 type Hub struct {
@@ -23,21 +30,27 @@ type Hub struct {
 	ctx         context.Context
 
 	// Eşzamanlılık koruması
-	mutex sync.RWMutex
+	mutex           sync.RWMutex
+	roomSubscribers map[uuid.UUID]*redis.PubSub
+	subscriberMutex sync.Mutex
 
 	repo Repository
+	//roomHub *RoomManagerHub
 }
 
 func NewHub(redisClient *redis.Client) *Hub {
 	hub := &Hub{
 		// Harita yapısını güncelledik
-		roomsClients: make(map[uuid.UUID]map[uuid.UUID]*domain.Client),
-		redisClient:  redisClient,
-		register:     make(chan *domain.Client),
-		unregister:   make(chan *domain.Client),
-		ctx:          context.Background(),
+		roomsClients:    make(map[uuid.UUID]map[uuid.UUID]*domain.Client),
+		redisClient:     redisClient,
+		register:        make(chan *domain.Client),
+		unregister:      make(chan *domain.Client),
+		ctx:             context.Background(),
+		roomSubscribers: make(map[uuid.UUID]*redis.PubSub),
 		//repo:         repo, //
+
 	}
+	//hub.roomHub = NewRoomManagerHub(redisClient, hub)
 	return hub
 }
 
@@ -62,6 +75,7 @@ func (h *Hub) Run(ctx context.Context) {
 			}
 		}
 	}()
+	//go h.roomHub.Run(ctx)
 }
 
 // RegisterClient, client'ı ana hub'ın register kanalına gönderir.
@@ -85,6 +99,7 @@ func (h *Hub) registerClient(client *domain.Client) {
 	// 1. Odaya ait istemci haritasını al
 	if _, ok := h.roomsClients[client.RoomID]; !ok {
 		h.roomsClients[client.RoomID] = make(map[uuid.UUID]*domain.Client)
+		h.startRoomSubscriber(client.RoomID)
 	}
 	roomClients := h.roomsClients[client.RoomID]
 
@@ -111,6 +126,7 @@ func (h *Hub) unregisterClient(client *domain.Client) {
 			delete(roomClients, client.ID)
 			if len(roomClients) == 0 {
 				delete(h.roomsClients, client.RoomID)
+				h.stopRoomSubscriber(client.RoomID)
 			}
 		}
 	}
@@ -120,6 +136,100 @@ func (h *Hub) unregisterClient(client *domain.Client) {
 	case <-client.Send:
 	default:
 		close(client.Send)
+	}
+}
+
+func (h *Hub) startRoomSubscriber(roomID uuid.UUID) {
+	h.subscriberMutex.Lock()
+	defer h.subscriberMutex.Unlock()
+
+	channel := fmt.Sprintf("room:%s", roomID.String())
+	pubsub := h.redisClient.Subscribe(h.ctx, channel)
+	h.roomSubscribers[roomID] = pubsub
+
+	go func() {
+		defer pubsub.Close()
+		log.Printf("Subscribed to Redis channel: %s", channel)
+
+		for msg := range pubsub.Channel() {
+			var roomManagerMsg RoomManager
+			if err := json.Unmarshal([]byte(msg.Payload), &roomManagerMsg); err != nil {
+				log.Printf("Failed to unmarshal Redis message for room %s: %v", roomID, err)
+				continue
+			}
+			fmt.Println("messaj geldi:", roomManagerMsg)
+
+			// Gelen mesaj türüne göre işlem yap
+			switch roomManagerMsg.Data.Type {
+			case "player_left":
+				// İçerik tipini kontrol et ve kullanıcı ID'sini al
+				contentMap, ok := roomManagerMsg.Data.Content.(map[string]interface{})
+				if !ok {
+					log.Println("Invalid content format for player_left message.")
+					continue
+				}
+
+				userIDStr, ok := contentMap["user_id"].(string)
+				if !ok {
+					log.Println("user_id not found in player_left content.")
+					continue
+				}
+
+				userID, err := uuid.Parse(userIDStr)
+				if err != nil {
+					log.Printf("Failed to parse user ID: %v", err)
+					continue
+				}
+
+				// WebSocket bağlantısını kapat
+				h.closeClientConnection(userID)
+
+				// Mesajı odaya yayınla
+				h.BroadcastMessage(roomID, &Message{
+					Type:    roomManagerMsg.Data.Type,
+					Content: roomManagerMsg.Data.Content,
+				})
+
+			// Diğer durumlarda (add_player, kick_player vb.)
+			default:
+				// Mesajı odaya yayınla
+				h.BroadcastMessage(roomID, &Message{
+					Type:    roomManagerMsg.Data.Type,
+					Content: roomManagerMsg.Data.Content,
+				})
+			}
+		}
+		log.Printf("Unsubscribed from Redis channel: %s", channel)
+	}()
+}
+func (h *Hub) closeClientConnection(userID uuid.UUID) {
+	h.mutex.Lock()
+	defer h.mutex.Unlock()
+
+	// Tüm odaları dönerek kullanıcıyı bul
+	for _, clients := range h.roomsClients {
+		if client, ok := clients[userID]; ok {
+			log.Printf("Closing WebSocket connection for user %s", userID)
+
+			// Bağlantıyı kapat
+			client.Conn.Close()
+
+			// Unregister kanalına gönder, bu sayede readPump/writePump goroutine'leri kapanır
+			h.unregister <- client
+			return
+		}
+	}
+	log.Printf("User %s not found in any room.", userID)
+}
+
+// stopRoomSubscriber, odaya özel Redis aboneliğini sonlandırır.
+func (h *Hub) stopRoomSubscriber(roomID uuid.UUID) {
+	h.subscriberMutex.Lock()
+	defer h.subscriberMutex.Unlock()
+
+	if pubsub, ok := h.roomSubscribers[roomID]; ok {
+		pubsub.Unsubscribe(h.ctx, fmt.Sprintf("room:%s", roomID.String()))
+		delete(h.roomSubscribers, roomID)
 	}
 }
 
@@ -172,6 +282,37 @@ func (h *Hub) writePump(client *domain.Client) {
 		// Bağlantının ping/pong mesajlarıyla hayatta kalmasını sağlamak için ping gönder
 		case <-time.After(1 * time.Minute):
 			client.Conn.WriteMessage(websocket.PingMessage, nil)
+		}
+	}
+}
+
+func (h *Hub) BroadcastMessage(roomID uuid.UUID, msg *Message) {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	roomClients, ok := h.roomsClients[roomID]
+	if !ok {
+		// Log a warning if the room does not exist.
+		log.Printf("Room %s not found for broadcast message.", roomID)
+		return
+	}
+
+	// Marshal the message into a JSON byte slice to be sent over the WebSocket.
+	// You need to import the "encoding/json" package and add appropriate error handling.
+	// For this example, I'll use a simple byte slice, but JSON is typical.
+	// For a more robust solution, you would use `json.Marshal` here.
+	messageBytes := []byte("A new player has joined the room!")
+
+	// Iterate over the clients in the room and send the message.
+	for _, client := range roomClients {
+		// Use a non-blocking select to send the message.
+		// If the channel is full, we log a warning and don't block.
+		select {
+		case client.Send <- messageBytes:
+			// Message was sent successfully.
+		default:
+			// This case is important to avoid blocking.
+			log.Printf("Client %s's send channel is full, dropping message.", client.ID)
 		}
 	}
 }

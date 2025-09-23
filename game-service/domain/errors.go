@@ -9,4 +9,5 @@ var (
 	ErrForbidden         = errors.New("forbidden")
 	ErrNotFound          = errors.New("not found")
 	ErrConflict          = errors.New("conflict")
+	ErrInternal          = errors.New("Internal")
 )

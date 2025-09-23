@@ -13,14 +13,15 @@ import (
 )
 
 type App struct {
-	config          config.Config
-	postgresRepo    PostgresRepository
-	sessionManager  SessionManager
-	fiberApp        *fiber.App
-	kafka           Messaging
-	hub             Hub
-	httpHandlers    map[string]interface{}
-	messageHandlers map[pb.MessageType]MessageHandler
+	config           config.Config
+	postgresRepo     PostgresRepository
+	sessionManager   SessionManager
+	roomRedisManager RoomRedisManager
+	fiberApp         *fiber.App
+	kafka            Messaging
+	hub              Hub
+	httpHandlers     map[string]interface{}
+	messageHandlers  map[pb.MessageType]MessageHandler
 
 	wsHandlers map[string]interface{}
 }
@@ -36,9 +37,10 @@ func NewApp(config config.Config) *App {
 func (a *App) initDependencies() {
 	a.postgresRepo = InitDatabase(a.config)
 	a.sessionManager = InitSessionRedis(a.config)
+	a.roomRedisManager = InitRoomRedis(a.config)
 	a.messageHandlers = SetupMessageHandlers(a.postgresRepo)
 	a.kafka = SetupMessaging(a.messageHandlers, a.config)
-	a.httpHandlers = SetupHTTPHandlers(a.postgresRepo, a.sessionManager, a.kafka)
+	a.httpHandlers = SetupHTTPHandlers(a.postgresRepo, a.sessionManager, a.kafka, a.roomRedisManager)
 	a.hub = InitWebsocket(context.Background(), a.sessionManager)
 	a.wsHandlers = SetupWSHandlers(a.postgresRepo, a.hub)
 	a.fiberApp = SetupServer(a.config, a.httpHandlers, a.wsHandlers)

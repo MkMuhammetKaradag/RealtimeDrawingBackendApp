@@ -10,11 +10,19 @@ import (
 	pb "shared-lib/events"
 )
 
-func SetupHTTPHandlers(postgresRepository PostgresRepository, sessionManager SessionManager, kafka Messaging) map[string]interface{} {
+func SetupHTTPHandlers(postgresRepository PostgresRepository, sessionManager SessionManager, kafka Messaging, roomRedisManager RoomRedisManager) map[string]interface{} {
 	createdRoomeUseCase := httpUsecase.NewCreateRoomUseCase(postgresRepository)
 	createdRoomeHandler := httpHandler.NewCreateRoomHandler(createdRoomeUseCase)
+
+	joinRoomeUseCase := httpUsecase.NewJoinRoomUseCase(postgresRepository, roomRedisManager)
+	joinRoomeHandler := httpHandler.NewJoinRoomHandler(joinRoomeUseCase)
+
+	leaveRoomeUseCase := httpUsecase.NewLeaveRoomUseCase(postgresRepository, roomRedisManager)
+	leaveRoomeHandler := httpHandler.NewLeaveRoomHandler(leaveRoomeUseCase)
 	return map[string]interface{}{
 		"create-room": createdRoomeHandler,
+		"join-room":   joinRoomeHandler,
+		"leave-room":  leaveRoomeHandler,
 	}
 }
 func SetupMessageHandlers(postgresRepository PostgresRepository) map[pb.MessageType]MessageHandler {

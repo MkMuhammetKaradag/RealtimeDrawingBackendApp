@@ -25,6 +25,8 @@ var ProtectedRoutes = map[string][]string{
 	},
 	"game": {
 		"/create-room",
+		"/join-room/:room_id",
+		"/leave-room/:room_id",
 	},
 
 	"wsgame": {
