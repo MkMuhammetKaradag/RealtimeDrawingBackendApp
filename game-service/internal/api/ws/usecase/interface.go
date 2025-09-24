@@ -19,4 +19,5 @@ type Hub interface {
 	Run(ctx context.Context)
 	RegisterClient(client *domain.Client)
 	UnregisterClient(client *domain.Client)
+	GetRoomClientCount(roomID uuid.UUID) int
 }

@@ -18,13 +18,14 @@ type Message struct {
 	Type    string      `json:"type"`
 	Content interface{} `json:"content"`
 }
+type RoomManagerData struct {
+	Type    string      `json:"type"`
+	Content interface{} `json:"content"`
+}
 type RoomManager struct {
-	RoomID uuid.UUID `json:"room_id"`
-	Type   string    `json:"type"`
-	Data   struct {
-		Type    string      `json:"type"`
-		Content interface{} `json:"content"`
-	} `json:"data"`
+	RoomID uuid.UUID       `json:"room_id"`
+	Type   string          `json:"type"`
+	Data   RoomManagerData `json:"data"`
 }
 
 const (
@@ -45,27 +46,27 @@ type Hub struct {
 	ctx         context.Context
 
 	// Eşzamanlılık koruması
-	mutex           sync.RWMutex
-	roomSubscribers map[uuid.UUID]*redis.PubSub
-	subscriberMutex sync.Mutex
+	mutex sync.RWMutex
+	//roomSubscribers map[uuid.UUID]*redis.PubSub
+	//subscriberMutex sync.Mutex
 
-	repo Repository
-	//roomHub *RoomManagerHub
+	repo    Repository
+	roomHub *roomHub
 }
 
 func NewHub(redisClient *redis.Client) *Hub {
 	hub := &Hub{
 		// Harita yapısını güncelledik
-		roomsClients:    make(map[uuid.UUID]map[uuid.UUID]*domain.Client),
-		redisClient:     redisClient,
-		register:        make(chan *domain.Client),
-		unregister:      make(chan *domain.Client),
-		ctx:             context.Background(),
-		roomSubscribers: make(map[uuid.UUID]*redis.PubSub),
+		roomsClients: make(map[uuid.UUID]map[uuid.UUID]*domain.Client),
+		redisClient:  redisClient,
+		register:     make(chan *domain.Client),
+		unregister:   make(chan *domain.Client),
+		ctx:          context.Background(),
+		//roomSubscribers: make(map[uuid.UUID]*redis.PubSub),
 		//repo:         repo, //
 
 	}
-	//hub.roomHub = NewRoomManagerHub(redisClient, hub)
+	hub.roomHub = NewRoomHub(hub.redisClient, hub)
 	return hub
 }
 
@@ -112,9 +113,10 @@ func (h *Hub) registerClient(client *domain.Client) {
 	defer h.mutex.Unlock()
 
 	// 1. Odaya ait istemci haritasını al
-	if _, ok := h.roomsClients[client.RoomID]; !ok {
+	room, ok := h.roomsClients[client.RoomID]
+	if !ok {
 		h.roomsClients[client.RoomID] = make(map[uuid.UUID]*domain.Client)
-		h.startRoomSubscriber(client.RoomID)
+		//h.startRoomSubscriber(client.RoomID)
 	}
 	roomClients := h.roomsClients[client.RoomID]
 
@@ -126,6 +128,9 @@ func (h *Hub) registerClient(client *domain.Client) {
 		close(existingClient.Send)
 		close(existingClient.Done)
 		delete(roomClients, client.ID)
+	}
+	if len(room) == 1 {
+		h.roomHub.StartSubscriber(client.RoomID)
 	}
 
 	// 3. Yeni istemciyi haritaya ekle
@@ -142,8 +147,10 @@ func (h *Hub) unregisterClient(client *domain.Client) {
 		if _, ok := roomClients[client.ID]; ok {
 			delete(roomClients, client.ID)
 			if len(roomClients) == 0 {
+
+				h.roomHub.StopSubscriber(client.RoomID)
 				delete(h.roomsClients, client.RoomID)
-				h.stopRoomSubscriber(client.RoomID)
+				//h.stopRoomSubscriber(client.RoomID)
 			}
 		}
 	}
@@ -156,69 +163,6 @@ func (h *Hub) unregisterClient(client *domain.Client) {
 	}
 }
 
-func (h *Hub) startRoomSubscriber(roomID uuid.UUID) {
-	h.subscriberMutex.Lock()
-	defer h.subscriberMutex.Unlock()
-
-	channel := fmt.Sprintf("room:%s", roomID.String())
-	pubsub := h.redisClient.Subscribe(h.ctx, channel)
-	h.roomSubscribers[roomID] = pubsub
-
-	go func() {
-		defer pubsub.Close()
-		log.Printf("Subscribed to Redis channel: %s", channel)
-
-		for msg := range pubsub.Channel() {
-			var roomManagerMsg RoomManager
-			if err := json.Unmarshal([]byte(msg.Payload), &roomManagerMsg); err != nil {
-				log.Printf("Failed to unmarshal Redis message for room %s: %v", roomID, err)
-				continue
-			}
-			fmt.Println("messaj geldi:", roomManagerMsg)
-
-			// Gelen mesaj türüne göre işlem yap
-			switch roomManagerMsg.Data.Type {
-			case "player_left":
-				// İçerik tipini kontrol et ve kullanıcı ID'sini al
-				contentMap, ok := roomManagerMsg.Data.Content.(map[string]interface{})
-				if !ok {
-					log.Println("Invalid content format for player_left message.")
-					continue
-				}
-
-				userIDStr, ok := contentMap["user_id"].(string)
-				if !ok {
-					log.Println("user_id not found in player_left content.")
-					continue
-				}
-
-				userID, err := uuid.Parse(userIDStr)
-				if err != nil {
-					log.Printf("Failed to parse user ID: %v", err)
-					continue
-				}
-
-				// WebSocket bağlantısını kapat
-				h.closeClientConnection(userID)
-
-				// Mesajı odaya yayınla
-				h.BroadcastMessage(roomID, &Message{
-					Type:    roomManagerMsg.Data.Type,
-					Content: roomManagerMsg.Data.Content,
-				})
-
-			// Diğer durumlarda (add_player, kick_player vb.)
-			default:
-				// Mesajı odaya yayınla
-				h.BroadcastMessage(roomID, &Message{
-					Type:    roomManagerMsg.Data.Type,
-					Content: roomManagerMsg.Data.Content,
-				})
-			}
-		}
-		log.Printf("Unsubscribed from Redis channel: %s", channel)
-	}()
-}
 func (h *Hub) closeClientConnection(userID uuid.UUID) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
@@ -239,16 +183,6 @@ func (h *Hub) closeClientConnection(userID uuid.UUID) {
 	log.Printf("User %s not found in any room.", userID)
 }
 
-// stopRoomSubscriber, odaya özel Redis aboneliğini sonlandırır.
-func (h *Hub) stopRoomSubscriber(roomID uuid.UUID) {
-	h.subscriberMutex.Lock()
-	defer h.subscriberMutex.Unlock()
-
-	if pubsub, ok := h.roomSubscribers[roomID]; ok {
-		pubsub.Unsubscribe(h.ctx, fmt.Sprintf("room:%s", roomID.String()))
-		delete(h.roomSubscribers, roomID)
-	}
-}
 
 // readPump, client'tan gelen mesajları okur ve Hub'a iletir.
 func (h *Hub) readPump(client *domain.Client) {
@@ -350,4 +284,16 @@ func (h *Hub) BroadcastMessage(roomID uuid.UUID, msg *Message) {
 			log.Printf("Client %s's send channel is full, dropping message.", client.ID)
 		}
 	}
+}
+
+func (h *Hub) GetRoomClientCount(roomID uuid.UUID) int {
+
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	if clients, ok := h.roomsClients[roomID]; ok {
+		return len(clients)
+	}
+
+	return 0
 }

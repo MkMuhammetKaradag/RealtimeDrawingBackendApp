@@ -3,72 +3,124 @@ package hub
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
+	"sync"
 
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
-type RoomManagerHub struct {
+// roomHub, Redis Pub/Sub üzerinden odaların durumunu yönetir.
+type roomHub struct {
 	redisClient *redis.Client
-	parentHub   *Hub
+	hub         *Hub // Hub'a referans, mesajları broadcast etmek için
+
+	subscribers map[uuid.UUID]*redis.PubSub
+	mutex       sync.Mutex
 }
 
-func NewRoomManagerHub(redisClient *redis.Client, parent *Hub) *RoomManagerHub {
-	return &RoomManagerHub{
+func NewRoomHub(redisClient *redis.Client, hub *Hub) *roomHub {
+	return &roomHub{
 		redisClient: redisClient,
-		parentHub:   parent,
+		hub:         hub,
+		subscribers: make(map[uuid.UUID]*redis.PubSub),
 	}
 }
 
-func (sh *RoomManagerHub) Run(ctx context.Context) {
+// StartSubscriber, belirli bir oda için Redis aboneliğini başlatır.
+func (rm *roomHub) StartSubscriber(roomID uuid.UUID) {
+	rm.mutex.Lock()
+	defer rm.mutex.Unlock()
 
-	go sh.RoomManager(ctx)
+	channel := fmt.Sprintf("room:%s", roomID.String())
+	if _, ok := rm.subscribers[roomID]; ok {
+		log.Printf("Subscriber for room %s already exists.", roomID)
+		return
+	}
 
-}
+	pubsub := rm.redisClient.Subscribe(context.Background(), channel)
+	rm.subscribers[roomID] = pubsub
 
-func (sh *RoomManagerHub) RoomManager(ctx context.Context) {
-	pubsub := sh.redisClient.Subscribe(ctx, "room_manager")
-	defer pubsub.Close()
+	go func() {
+		defer pubsub.Close()
+		log.Printf("Subscribed to Redis channel: %s", channel)
 
-	// Kanal dinleme döngüsü
-	for {
-		select {
-		case <-ctx.Done():
-			// Bağlam iptal edildiğinde çık
-			return
-
-		default:
-			// Redis'ten mesaj al
-			msg, err := pubsub.ReceiveMessage(ctx)
-			if err != nil {
-				log.Println("Redis coversationroom manager  subscription error:", err)
+		for msg := range pubsub.Channel() {
+			var redisMessage RoomManager
+			if err := json.Unmarshal([]byte(msg.Payload), &redisMessage); err != nil {
+				log.Printf("Failed to unmarshal Redis message for room %s: %v", roomID, err)
 				continue
 			}
-
-			// Durumu işle
-			var managerMsg RoomManager
-			err = json.Unmarshal([]byte(msg.Payload), &managerMsg)
-			if err != nil {
-				log.Println("coversation room  manager  unmarshal error:", err)
-				continue
-			}
-
-			switch managerMsg.Type {
-			case "add_player":
-				sh.parentHub.BroadcastMessage(managerMsg.RoomID, (*Message)(&managerMsg.Data))
-			case "kick_player":
-
-				sh.parentHub.BroadcastMessage(managerMsg.RoomID, (*Message)(&managerMsg.Data))
-
-			case "ban_player":
-				sh.parentHub.BroadcastMessage(managerMsg.RoomID, (*Message)(&managerMsg.Data))
-
-			case "unban_player":
-				sh.parentHub.BroadcastMessage(managerMsg.RoomID, (*Message)(&managerMsg.Data))
-
-			default:
-				log.Println("Unknown conversation user manager type:", managerMsg.Type)
-			}
+			rm.handleRedisMessage(roomID, redisMessage.Data)
 		}
+		log.Printf("Unsubscribed from Redis channel: %s", channel)
+	}()
+}
+
+// StopSubscriber, belirli bir oda için Redis aboneliğini sonlandırır.
+func (rm *roomHub) StopSubscriber(roomID uuid.UUID) {
+	rm.mutex.Lock()
+	defer rm.mutex.Unlock()
+
+	if pubsub, ok := rm.subscribers[roomID]; ok {
+		pubsub.Unsubscribe(context.Background(), fmt.Sprintf("room:%s", roomID.String()))
+		delete(rm.subscribers, roomID)
 	}
+}
+
+// handleRedisMessage, Redis'ten gelen mesajları tipine göre yönlendirir.
+func (rm *roomHub) handleRedisMessage(roomID uuid.UUID, data RoomManagerData) {
+
+	switch data.Type {
+	case "player_left":
+		rm.handlePlayerLeft(roomID, data)
+	case "player_joined":
+		rm.handlePlayerLeft(roomID, data)
+	
+	default:
+		log.Printf("Unknown message content type : %s", data.Type)
+	}
+}
+
+
+func (rm *roomHub) handleGameStarted(roomID uuid.UUID, msg RoomManagerData) {
+	log.Printf("Game started in room %s.", roomID)
+	
+	message := &Message{
+		Type:    "game_started",
+		Content: msg,
+	}
+	rm.hub.BroadcastMessage(roomID, message)
+}
+
+
+func (rm *roomHub) handlePlayerLeft(roomID uuid.UUID, msg RoomManagerData) {
+	log.Printf("Player left room %s.", roomID)
+	
+	message := &Message{
+		Type:    "player_left",
+		Content: msg.Content,
+	}
+	rm.hub.BroadcastMessage(roomID, message)
+}
+func (rm *roomHub) handlePlayerJoin(roomID uuid.UUID, msg RoomManagerData) {
+	log.Printf("Player join room %s.", roomID)
+
+	message := &Message{
+		Type:    "player_joined",
+		Content: msg.Content,
+	}
+	rm.hub.BroadcastMessage(roomID, message)
+}
+
+
+func (rm *roomHub) handleGameStateUpdate(roomID uuid.UUID, msg RoomManagerData) {
+	log.Printf("Game state update for room %s.", roomID)
+
+	message := &Message{
+		Type:    "game_state_update",
+		Content: msg,
+	}
+	rm.hub.BroadcastMessage(roomID, message)
 }
