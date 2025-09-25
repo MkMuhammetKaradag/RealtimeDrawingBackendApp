@@ -15,7 +15,7 @@ import (
 type roomHub struct {
 	redisClient *redis.Client
 	hub         *Hub // Hub'a referans, mesajları broadcast etmek için
-
+	gameHub     *GameHub
 	subscribers map[uuid.UUID]*redis.PubSub
 	mutex       sync.Mutex
 }
@@ -24,6 +24,7 @@ func NewRoomHub(redisClient *redis.Client, hub *Hub) *roomHub {
 	return &roomHub{
 		redisClient: redisClient,
 		hub:         hub,
+		gameHub:     hub.gameHub,
 		subscribers: make(map[uuid.UUID]*redis.PubSub),
 	}
 }
@@ -71,22 +72,23 @@ func (rm *roomHub) StopSubscriber(roomID uuid.UUID) {
 
 // handleRedisMessage, Redis'ten gelen mesajları tipine göre yönlendirir.
 func (rm *roomHub) handleRedisMessage(roomID uuid.UUID, data RoomManagerData) {
-
+	
 	switch data.Type {
+	case "game_mode_change", "game_settings_update":
+		rm.gameHub.HandleGameMessage(roomID, data)
 	case "player_left":
 		rm.handlePlayerLeft(roomID, data)
 	case "player_joined":
 		rm.handlePlayerLeft(roomID, data)
-	
+
 	default:
 		log.Printf("Unknown message content type : %s", data.Type)
 	}
 }
 
-
 func (rm *roomHub) handleGameStarted(roomID uuid.UUID, msg RoomManagerData) {
 	log.Printf("Game started in room %s.", roomID)
-	
+
 	message := &Message{
 		Type:    "game_started",
 		Content: msg,
@@ -94,10 +96,9 @@ func (rm *roomHub) handleGameStarted(roomID uuid.UUID, msg RoomManagerData) {
 	rm.hub.BroadcastMessage(roomID, message)
 }
 
-
 func (rm *roomHub) handlePlayerLeft(roomID uuid.UUID, msg RoomManagerData) {
 	log.Printf("Player left room %s.", roomID)
-	
+
 	message := &Message{
 		Type:    "player_left",
 		Content: msg.Content,
@@ -110,17 +111,6 @@ func (rm *roomHub) handlePlayerJoin(roomID uuid.UUID, msg RoomManagerData) {
 	message := &Message{
 		Type:    "player_joined",
 		Content: msg.Content,
-	}
-	rm.hub.BroadcastMessage(roomID, message)
-}
-
-
-func (rm *roomHub) handleGameStateUpdate(roomID uuid.UUID, msg RoomManagerData) {
-	log.Printf("Game state update for room %s.", roomID)
-
-	message := &Message{
-		Type:    "game_state_update",
-		Content: msg,
 	}
 	rm.hub.BroadcastMessage(roomID, message)
 }

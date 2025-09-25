@@ -19,10 +19,14 @@ func SetupHTTPHandlers(postgresRepository PostgresRepository, sessionManager Ses
 
 	leaveRoomeUseCase := httpUsecase.NewLeaveRoomUseCase(postgresRepository, roomRedisManager)
 	leaveRoomeHandler := httpHandler.NewLeaveRoomHandler(leaveRoomeUseCase)
+
+	updateRoomeGameModeUseCase := httpUsecase.NewUpdateRoomGamemodeUseCase(postgresRepository, roomRedisManager)
+	updateRoomeGameModeHandler := httpHandler.NewUpdateRoomGameModeHandler(updateRoomeGameModeUseCase)
 	return map[string]interface{}{
-		"create-room": createdRoomeHandler,
-		"join-room":   joinRoomeHandler,
-		"leave-room":  leaveRoomeHandler,
+		"create-room":           createdRoomeHandler,
+		"join-room":             joinRoomeHandler,
+		"leave-room":            leaveRoomeHandler,
+		"update-room-game-mode": updateRoomeGameModeHandler,
 	}
 }
 func SetupMessageHandlers(postgresRepository PostgresRepository) map[pb.MessageType]MessageHandler {

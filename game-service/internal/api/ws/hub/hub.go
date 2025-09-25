@@ -22,6 +22,7 @@ type RoomManagerData struct {
 	Type    string      `json:"type"`
 	Content interface{} `json:"content"`
 }
+
 type RoomManager struct {
 	RoomID uuid.UUID       `json:"room_id"`
 	Type   string          `json:"type"`
@@ -50,8 +51,10 @@ type Hub struct {
 	//roomSubscribers map[uuid.UUID]*redis.PubSub
 	//subscriberMutex sync.Mutex
 
+
 	repo    Repository
 	roomHub *roomHub
+	gameHub *GameHub // GameHub'ı buraya ekledi
 }
 
 func NewHub(redisClient *redis.Client) *Hub {
@@ -63,15 +66,28 @@ func NewHub(redisClient *redis.Client) *Hub {
 		unregister:   make(chan *domain.Client),
 		ctx:          context.Background(),
 		//roomSubscribers: make(map[uuid.UUID]*redis.PubSub),
-		//repo:         repo, //
+
+
 
 	}
+	hub.gameHub = NewGameHub(hub)
 	hub.roomHub = NewRoomHub(hub.redisClient, hub)
 	return hub
 }
 
+func (h *Hub) GetRoomSettings(roomID uuid.UUID) *GameSettings {
+	h.gameHub.mutex.RLock()
+	defer h.gameHub.mutex.RUnlock()
+
+	if settings, exists := h.gameHub.roomSettings[roomID]; exists {
+		return settings
+	}
+
+	return nil
+}
 func (h *Hub) Run(ctx context.Context) {
 	// Ana hub döngüsü, olayları dinler.
+
 	// Bu, tüm senkronizasyon ve kayıt/kayıt silme mantığının kalbidir.
 	go func() {
 		for {
@@ -112,30 +128,44 @@ func (h *Hub) registerClient(client *domain.Client) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 
-	// 1. Odaya ait istemci haritasını al
-	room, ok := h.roomsClients[client.RoomID]
+	// 1. Odaya ait istemci haritasını al. Eğer yoksa oluştur.
+	roomClients, ok := h.roomsClients[client.RoomID]
 	if !ok {
-		h.roomsClients[client.RoomID] = make(map[uuid.UUID]*domain.Client)
-		//h.startRoomSubscriber(client.RoomID)
+		// Oda ilk defa oluşturuluyor.
+		roomClients = make(map[uuid.UUID]*domain.Client)
+		h.roomsClients[client.RoomID] = roomClients
 	}
-	roomClients := h.roomsClients[client.RoomID]
 
-	// 2. Aynı kullanıcı ID'sine sahip bir istemci var mı kontrol et
+	// Haritaya yeni istemci eklenmeden önceki oyuncu sayısını kontrol et
+	// Aynı kullanıcı ID'sine sahip bir istemci var mı kontrol et (Yeniden Bağlantı)
+	isReconnection := false
 	if existingClient, ok := roomClients[client.ID]; ok {
 		log.Printf("User %s is already connected to room %s. Closing old connection.", client.ID, client.RoomID)
 
-		// Eğer mevcut bir bağlantı varsa, kanalını kapat ve haritadan sil.
+		// Önceki bağlantıyı temizle
 		close(existingClient.Send)
 		close(existingClient.Done)
 		delete(roomClients, client.ID)
-	}
-	if len(room) == 1 {
-		h.roomHub.StartSubscriber(client.RoomID)
+		isReconnection = true // Yeniden bağlantı olduğunu işaretle
 	}
 
-	// 3. Yeni istemciyi haritaya ekle
+	// Odadaki anlık istemci sayısı
+	currentClientCount := len(roomClients)
+
+	// 2. Yeni istemciyi haritaya ekle
 	client.Done = make(chan struct{}) // Done kanalını initialize et
 	roomClients[client.ID] = client
+
+	// 3. Subscriber (Abone) başlatma mantığı
+	// Eğer:
+	// a) Bu bir yeniden bağlantı DEĞİLSE (isReconnection == false)
+	// b) Ve yeni bağlantıdan önceki sayı SIFIR ise (yani şimdi ODAYA İLK KİŞİ girmişse)
+	if !isReconnection && currentClientCount == 0 {
+		fmt.Println("Odaya ilk kişi bağlandı. Subscriber başlatılıyor.")
+		h.roomHub.StartSubscriber(client.RoomID)
+	} else if isReconnection && currentClientCount == 0 {
+		fmt.Println("client reconnection")
+	}
 }
 
 // unregisterClient handles client unregistration (internal).
@@ -149,7 +179,10 @@ func (h *Hub) unregisterClient(client *domain.Client) {
 			if len(roomClients) == 0 {
 
 				h.roomHub.StopSubscriber(client.RoomID)
+
+				h.roomHub.StopSubscriber(client.RoomID)
 				delete(h.roomsClients, client.RoomID)
+				//h.stopRoomSubscriber(client.RoomID)
 				//h.stopRoomSubscriber(client.RoomID)
 			}
 		}
@@ -183,7 +216,6 @@ func (h *Hub) closeClientConnection(userID uuid.UUID) {
 	log.Printf("User %s not found in any room.", userID)
 }
 
-
 // readPump, client'tan gelen mesajları okur ve Hub'a iletir.
 func (h *Hub) readPump(client *domain.Client) {
 	defer func() {
@@ -209,8 +241,61 @@ func (h *Hub) readPump(client *domain.Client) {
 			continue
 		}
 		fmt.Println("msg:", msg, "messagetype:", messageType)
+		switch msg.Type {
+		case "get_room_setting": // Düzeltme: "seeting" yerine "setting"
+			// Odanın ayarlarını al
+			settings := h.GetRoomSettings(client.RoomID)
+
+			if settings == nil {
+				// Ayar bulunamazsa veya GameHub'da henüz oluşturulmamışsa hata gönder
+				h.sendErrorToClient(client, "Room settings not found or game not initialized.")
+				continue
+			}
+
+			// Ayarları istemciye geri gönder
+			response := &Message{
+				Type:    "room_settings",
+				Content: settings, // GameSettings yapısı doğrudan gönderilebilir.
+			}
+
+			// İstemciye JSON mesajı gönderme
+			if err := h.SendMessageToClient(client, response); err != nil {
+				log.Printf("Failed to send room settings to client %s: %v", client.ID, err)
+			}
+
+		}
 		// Mesaj işleme mantığı buraya gelecek.
 		// Örneğin: h.handleMessage(msg, client)
+	}
+}
+
+// SendMessageToClient, belirtilen client'a JSON formatında bir mesaj gönderir.
+func (h *Hub) SendMessageToClient(client *domain.Client, msg *Message) error {
+	messageBytes, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message: %w", err)
+	}
+
+	select {
+	case client.Send <- messageBytes:
+		return nil
+	default:
+		// Kanal doluysa veya kapalıysa
+		log.Printf("Client %s's send channel is full, dropping message.", client.ID)
+		return fmt.Errorf("client send channel is full")
+	}
+}
+
+// sendErrorToClient, belirtilen client'a bir hata mesajı gönderir.
+func (h *Hub) sendErrorToClient(client *domain.Client, errorMessage string) {
+	errorMsg := &Message{
+		Type:    "error",
+		Content: errorMessage,
+	}
+
+	// Hata mesajını istemciye gönderme
+	if err := h.SendMessageToClient(client, errorMsg); err != nil {
+		log.Printf("Failed to send error message to client %s: %v", client.ID, err)
 	}
 }
 
@@ -297,3 +382,5 @@ func (h *Hub) GetRoomClientCount(roomID uuid.UUID) int {
 
 	return 0
 }
+
+

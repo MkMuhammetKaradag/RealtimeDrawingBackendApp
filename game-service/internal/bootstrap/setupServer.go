@@ -33,9 +33,11 @@ func SetupServer(config config.Config, httpHandlers map[string]interface{}, wsHa
 	createRoomHandler := httpHandlers["create-room"].(*httpGameHandler.CreateRoomHandler)
 	joinRoomHandler := httpHandlers["join-room"].(*httpGameHandler.JoinRoomHandler)
 	leaveRoomHandler := httpHandlers["leave-room"].(*httpGameHandler.LeaveRoomHandler)
+	updateRoomGameModeHandler := httpHandlers["update-room-game-mode"].(*httpGameHandler.UpdateRoomGameModeHandler)
 	app.Post("/create-room", handler.HandleWithFiber[httpGameHandler.CreateRoomRequest, httpGameHandler.CreateRoomResponse](createRoomHandler))
 	app.Post("/join-room/:room_id", handler.HandleWithFiber[httpGameHandler.JoinRoomRequest, httpGameHandler.JoinRoomResponse](joinRoomHandler))
 	app.Post("/leave-room/:room_id", handler.HandleWithFiber[httpGameHandler.LeaveRoomRequest, httpGameHandler.LeaveRoomResponse](leaveRoomHandler))
+	app.Patch("/game-mode/:room_id", handler.HandleWithFiber[httpGameHandler.UpdateRoomGameModeRequest, httpGameHandler.UpdateRoomGameModeResponse](updateRoomGameModeHandler))
 
 	wsRoute := app.Group("/ws")
 	gameHandler := wsHandlers["room-connect"].(*wsHandler.WebSocketRoomHandler)

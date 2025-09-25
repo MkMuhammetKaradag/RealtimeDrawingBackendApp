@@ -15,6 +15,7 @@ type PostgresRepository interface {
 	IsMemberRoom(ctx context.Context, roomID, userID uuid.UUID) (bool, error)
 	JoinRoom(ctx context.Context, roomID, userID uuid.UUID, roomCode string) error
 	LeaveRoom(ctx context.Context, roomID, userID uuid.UUID) error
+	UpdateRoomGameMode(ctx context.Context, roomID uuid.UUID, userID uuid.UUID, newGameModeID int) error
 }
 
 func InitDatabase(config config.Config) PostgresRepository {
