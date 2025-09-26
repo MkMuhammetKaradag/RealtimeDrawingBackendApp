@@ -50,8 +50,10 @@ type Hub struct {
 	mutex sync.RWMutex
 	//roomSubscribers map[uuid.UUID]*redis.PubSub
 	//subscriberMutex sync.Mutex
-
-
+	playerQuit chan struct {
+		RoomID uuid.UUID
+		UserID uuid.UUID
+	}
 	repo    Repository
 	roomHub *roomHub
 	gameHub *GameHub // GameHub'ı buraya ekledi
@@ -64,17 +66,28 @@ func NewHub(redisClient *redis.Client) *Hub {
 		redisClient:  redisClient,
 		register:     make(chan *domain.Client),
 		unregister:   make(chan *domain.Client),
-		ctx:          context.Background(),
+		playerQuit: make(chan struct {
+			RoomID uuid.UUID
+			UserID uuid.UUID
+		}, 10),
+		ctx: context.Background(),
 		//roomSubscribers: make(map[uuid.UUID]*redis.PubSub),
-
-
 
 	}
 	hub.gameHub = NewGameHub(hub)
 	hub.roomHub = NewRoomHub(hub.redisClient, hub)
+	go hub.GameHubListener()
 	return hub
 }
-
+func (h *Hub) GameHubListener() {
+	for {
+		select {
+		case quit := <-h.playerQuit:
+			// GameHub'a mesajı ilet
+			h.gameHub.HandlePlayerQuit(quit.RoomID, quit.UserID)
+		}
+	}
+}
 func (h *Hub) GetRoomSettings(roomID uuid.UUID) *GameSettings {
 	h.gameHub.mutex.RLock()
 	defer h.gameHub.mutex.RUnlock()
@@ -172,7 +185,19 @@ func (h *Hub) registerClient(client *domain.Client) {
 func (h *Hub) unregisterClient(client *domain.Client) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
+	if client.RoomID != uuid.Nil {
+		// İlgili odadan client'ı kaldır
+		if roomClients, ok := h.roomsClients[client.RoomID]; ok {
+			delete(roomClients, client.ID)
+			log.Printf("Client %s unregistered from room %s. Remaining: %d", client.ID, client.RoomID, len(roomClients))
 
+			// 💡 PlayerQuit kanalına bilgi gönder
+			h.playerQuit <- struct {
+				RoomID uuid.UUID
+				UserID uuid.UUID
+			}{RoomID: client.RoomID, UserID: client.ID}
+		}
+	}
 	if roomClients, ok := h.roomsClients[client.RoomID]; ok {
 		if _, ok := roomClients[client.ID]; ok {
 			delete(roomClients, client.ID)
@@ -224,7 +249,7 @@ func (h *Hub) readPump(client *domain.Client) {
 	}()
 
 	for {
-		messageType, payload, err := client.Conn.ReadMessage()
+		_, payload, err := client.Conn.ReadMessage()
 		if err != nil {
 			if websocket.IsCloseError(err, websocket.CloseNormalClosure, websocket.CloseGoingAway) {
 				log.Println("Client connection closed gracefully.")
@@ -235,12 +260,12 @@ func (h *Hub) readPump(client *domain.Client) {
 		}
 
 		// Gelen mesajı işle
-		var msg Message
+		var msg RoomManagerData
 		if err := json.Unmarshal(payload, &msg); err != nil {
 			log.Printf("Failed to unmarshal message: %v", err)
 			continue
 		}
-		fmt.Println("msg:", msg, "messagetype:", messageType)
+
 		switch msg.Type {
 		case "get_room_setting": // Düzeltme: "seeting" yerine "setting"
 			// Odanın ayarlarını al
@@ -263,10 +288,42 @@ func (h *Hub) readPump(client *domain.Client) {
 				log.Printf("Failed to send room settings to client %s: %v", client.ID, err)
 			}
 
+		case "game_started":
+			fmt.Printf("Game start request from user %s in room %s\n", client.ID, client.RoomID)
+			// creatorID, exists := h.GetRoomCreatorID(client.RoomID)
+			// if !exists {
+			// 	h.sendErrorToClient(client, "Room not found or creator info missing.")
+			// 	continue
+			// }
+
+			// if client.ID != creatorID {
+			// 	// Sadece yaratıcı oyunu başlatabilir.
+			// 	h.sendErrorToClient(client, "Only the room creator can start the game.")
+			// 	continue
+			// }
+
+			// Yaratıcıysa oyunu başlat
+			h.gameHub.HandleGameMessage(client.RoomID, msg)
+
 		}
 		// Mesaj işleme mantığı buraya gelecek.
 		// Örneğin: h.handleMessage(msg, client)
 	}
+}
+func (h *Hub) GetRoomClients(roomID uuid.UUID) map[uuid.UUID]*domain.Client {
+	h.mutex.RLock() // Read Lock kullanıyoruz
+	defer h.mutex.RUnlock()
+
+	clients, ok := h.roomsClients[roomID]
+	if !ok {
+		return nil
+	}
+
+	// Haritanın bir kopyasını döndürmek eşzamanlılık açısından en güvenli yoldur,
+	// ancak performans kaygısı varsa, sadece ReadLock yeterli olabilir.
+	// Basit bir oyun için sadece okuma (RLock) ve orijinal haritayı döndürmek yeterlidir.
+	// clients, orijinal haritaya bir referanstır, bu yüzden sadece okuma amaçlı kullanın!
+	return clients
 }
 
 // SendMessageToClient, belirtilen client'a JSON formatında bir mesaj gönderir.
@@ -382,5 +439,33 @@ func (h *Hub) GetRoomClientCount(roomID uuid.UUID) int {
 
 	return 0
 }
+func (h *Hub) SendMessageToUser(roomID uuid.UUID, userID uuid.UUID, msg *Message) error {
+	h.mutex.RLock() // Haritadan okuma yapacağımız için RLock
+	defer h.mutex.RUnlock()
+	fmt.Println("SendMessageToUser msg:", msg)
+	roomClients, ok := h.roomsClients[roomID]
+	if !ok {
+		return fmt.Errorf("room %s not found for user %s", roomID, userID)
+	}
 
+	client, ok := roomClients[userID]
+	if !ok {
+		return fmt.Errorf("client %s not found in room %s", userID, roomID)
+	}
 
+	// Mesajı JSON'a çevir
+	messageBytes, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("failed to marshal message for user %s: %w", userID, err)
+	}
+
+	// Client'ın Send kanalına gönder
+	select {
+	case client.Send <- messageBytes:
+		return nil
+	default:
+		// Kanal doluysa veya kapalıysa
+		log.Printf("Client %s's send channel is full, dropping message.", client.ID)
+		return fmt.Errorf("client send channel is full")
+	}
+}
