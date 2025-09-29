@@ -33,29 +33,31 @@ type Player struct {
 }
 
 type GameSettings struct {
-	ModeName      string `json:"mode_name"`
-	ModeID        string `json:"mode_id"`
-	TotalRounds   int    `json:"total_rounds"`
-	RoundDuration int    `json:"round_duration"` // saniye cinsinden
-	MaxPlayers    int    `json:"max_players"`
-	MinPlayers    int    `json:"min_players"`
+	ModeName            string `json:"mode_name"`
+	ModeID              string `json:"mode_id"`
+	TotalRounds         int    `json:"total_rounds"`
+	RoundDuration       int    `json:"round_duration"` // saniye cinsinden
+	PreparationDuration int    `json:"preparation_duration"`
+	MaxPlayers          int    `json:"max_players"`
+	MinPlayers          int    `json:"min_players"`
 }
 
 // Game, bir oyunun mevcut durumunu tutar.
 type Game struct {
-	RoomID             uuid.UUID   `json:"room_id"`
-	ModeName           string      `json:"mode_name"`
-	ModeID             string      `json:"mode_id"`
-	State              string      `json:"state"`
-	Players            []*Player   `json:"players"`
-	TurnCount          int         `json:"turn_count"`
-	TotalRounds        int         `json:"total_rounds"`
-	RoundDuration      int         `json:"round_duration"`
-	ActivePlayer       uuid.UUID   `json:"active_player"`
-	LastMoveTime       time.Time   `json:"last_move_time"`
-	ModeData           interface{} `json:"mode_data"`
-	CurrentDrawerIndex int         `json:"current_drawer_index"`
-	Mutex              sync.RWMutex
+	RoomID              uuid.UUID   `json:"room_id"`
+	ModeName            string      `json:"mode_name"`
+	ModeID              string      `json:"mode_id"`
+	State               string      `json:"state"`
+	Players             []*Player   `json:"players"`
+	TurnCount           int         `json:"turn_count"`
+	TotalRounds         int         `json:"total_rounds"`
+	RoundDuration       int         `json:"round_duration"`
+	ActivePlayer        uuid.UUID   `json:"active_player"`
+	LastMoveTime        time.Time   `json:"last_move_time"`
+	PreparationDuration int         `json:"preparation_duration"` // 🎯 YENİ
+	ModeData            interface{} `json:"mode_data"`
+	CurrentDrawerIndex  int         `json:"current_drawer_index"`
+	Mutex               sync.RWMutex
 }
 
 // Game'e özel yapılar
@@ -114,6 +116,7 @@ func (g *GameHub) RunListener() {
 	for {
 		select {
 		case quit := <-g.hub.playerQuit: // (Önceki işlevsellik)
+			log.Printf("RUN_LISTENER: Player quit received - Room: %s, User: %s\n", quit.RoomID, quit.UserID)
 			g.HandlePlayerQuit(quit.RoomID, quit.UserID)
 
 		// 💡 YENİ CASE: Tur bitiş sinyalini işle
@@ -126,61 +129,96 @@ func (g *GameHub) RunListener() {
 	}
 }
 func (g *GameHub) HandlePlayerQuit(roomID uuid.UUID, userID uuid.UUID) {
+	log.Printf("HandlePlayerQuit called for room %s, user %s", roomID, userID)
+
 	g.mutex.Lock()
-	defer g.mutex.Unlock()
 
 	game, exists := g.activeGames[roomID]
 	if !exists || game.State != GameStateInProgress {
-		return // Oyun devam etmiyorsa bir şey yapma
+		g.mutex.Unlock()
+		log.Printf("No active game found for room %s", roomID)
+		return
 	}
 
 	// Oyuncu listesinden çıkar
 	newPlayers := make([]*Player, 0, len(game.Players)-1)
 	playerFound := false
+	var removedPlayer *Player
+
 	for _, p := range game.Players {
 		if p.UserID == userID {
 			playerFound = true
+			removedPlayer = p
 			continue
 		}
 		newPlayers = append(newPlayers, p)
 	}
 
 	if !playerFound {
-		return // Oyuncu zaten listede yoksa
+		g.mutex.Unlock()
+		log.Printf("Player %s not found in game", userID)
+		return
 	}
 
+	// Oyuncu listesini güncelle
 	game.Players = newPlayers
+	remainingPlayerCount := len(game.Players)
 
-	// Kalan oyuncu sayısını kontrol et
-	settings, _ := g.roomSettings[roomID]
-	if len(game.Players) < settings.MinPlayers {
-		// 💡 Yetersiz oyuncu sayısı, oyunu bitir.
-		msg := RoomManagerData{
+	log.Printf("Player %s removed. Remaining players: %d", userID, remainingPlayerCount)
+
+	// Oyun ayarlarını kontrol et
+	settings, settingsExist := g.roomSettings[roomID]
+	if !settingsExist {
+		g.mutex.Unlock()
+		log.Printf("WARNING: Room settings not found for room %s", roomID)
+		return
+	}
+
+	// Kalan oyuncu sayısı minimum sayısından az mı?
+	if remainingPlayerCount < settings.MinPlayers {
+		log.Printf("Insufficient players (%d < %d). Ending game for room %s",
+			remainingPlayerCount, settings.MinPlayers, roomID)
+
+		// Mutex'i unlock et çünkü handleEndGame içinde tekrar lock alınacak
+		g.mutex.Unlock()
+
+		// Zamanlayıcıyı durdur
+		g.stopRoundTimer(roomID)
+
+		// Oyunu bitir
+		g.handleEndGame(roomID, RoomManagerData{
 			Type: "end_game",
 			Content: map[string]interface{}{
-				"reason": "insufficient_players",
+				"reason":  "insufficient_players",
+				"message": fmt.Sprintf("Oyun sonlandırıldı. Minimum %d oyuncu gerekli.", settings.MinPlayers),
 			},
-		}
-		g.handleEndGame(roomID, msg)
+		})
 		return
 	}
 
-	// Sırası gelen oyuncu mu ayrıldı?
-	if game.ActivePlayer == userID {
-		log.Printf("Current drawer %s has left the game.", userID)
-		// 💡 Turu hemen bitir ve yeni tura geç
-		g.handleRoundEnd(roomID, "drawer_left")
-		return
-	}
+	// Ayrılan oyuncu aktif çizen miydi?
+	wasActiveDrawer := game.ActivePlayer == userID
 
-	// Oyun devam ediyor, oyunculara bildirim gönder
+	// Mutex'i unlock et
+	g.mutex.Unlock()
+
+	// Oyunculara ayrılma bildirimini gönder
 	g.hub.BroadcastMessage(roomID, &Message{
 		Type: "player_left",
 		Content: map[string]interface{}{
-			"room_id": roomID,
-			"user_id": userID,
+			"room_id":       roomID,
+			"user_id":       userID,
+			"username":      removedPlayer.Username,
+			"remaining":     remainingPlayerCount,
+			"active_drawer": wasActiveDrawer,
 		},
 	})
+
+	// Eğer ayrılan oyuncu çizen ise, turu bitir
+	if wasActiveDrawer {
+		log.Printf("Active drawer %s left. Ending round for room %s", userID, roomID)
+		g.handleRoundEnd(roomID, "drawer_left")
+	}
 }
 func (g *GameHub) startRoundTimer(roomID uuid.UUID, duration time.Duration) {
 	// Önceki zamanlayıcı varsa durdur ve bekle (Bloklama burada oluyor)
@@ -319,7 +357,17 @@ func (g *GameHub) handleRoundEnd(roomID uuid.UUID, reason string) {
 		// Yeniden Game kilidini alıyoruz, çünkü StartRound oyun nesnesini değiştirecek.
 		// ⚠️ KRİTİK DEĞİŞİKLİK: StartRound ve Timer'ı yeni bir Goroutine'e taşı!
 		go func(g *GameHub, dge *DrawingGameEngine, game *Game, roomID uuid.UUID) {
+			preparationDuration := time.Duration(game.PreparationDuration) * time.Second
 
+			game.Mutex.Lock()
+			dge.SendPreparationNotifications(game)
+			game.Mutex.Unlock()
+
+			log.Printf("PREPARATION: Waiting %v seconds before starting round for room %s",
+				game.PreparationDuration, roomID)
+
+			// 2. HAZIRLIK SÜRESİNİ BEKLE
+			time.Sleep(preparationDuration)
 			// Yeni turu başlat (Game kilidi GOROUTINE içinde alınmalı!)
 			game.Mutex.Lock()
 
@@ -355,8 +403,8 @@ func (g *GameHub) handleRoundEnd(roomID uuid.UUID, reason string) {
 	}
 }
 func (g *GameHub) HandleGameMessage(roomID uuid.UUID, msg RoomManagerData) {
-	g.mutex.Lock()
-	defer g.mutex.Unlock()
+	// g.mutex.Lock()
+	// defer g.mutex.Unlock()
 
 	fmt.Println("GameHub'da gelen mesaj:", msg.Type, "RoomID:", roomID)
 
@@ -367,8 +415,8 @@ func (g *GameHub) HandleGameMessage(roomID uuid.UUID, msg RoomManagerData) {
 		g.handleGameSettingsUpdate(roomID, msg)
 	case "game_started":
 		g.handleGameStarted(roomID, msg)
-	// case "player_move":
-	// 	g.handlePlayerMove(roomID, msg)
+	case "player_move":
+		g.handlePlayerMove(roomID, msg)
 	// case "end_game":
 	// 	g.handleEndGame(roomID, msg)
 	// case "drawing_data":
@@ -445,11 +493,12 @@ func (g *GameHub) handleGameSettingsUpdate(roomID uuid.UUID, msg RoomManagerData
 	if !exists {
 		// Varsayılan ayarları oluştur
 		settings = &GameSettings{
-			ModeName:      "Çizim ve Tahmin", // default
-			TotalRounds:   2,
-			RoundDuration: 60,
-			MaxPlayers:    8,
-			MinPlayers:    2,
+			ModeName:            "Çizim ve Tahmin", // default
+			TotalRounds:         2,
+			RoundDuration:       60,
+			PreparationDuration: 5, // 🎯 Varsayılan 5 saniye
+			MaxPlayers:          8,
+			MinPlayers:          2,
 		}
 	}
 
@@ -488,9 +537,15 @@ func (g *GameHub) handleGameStarted(roomID uuid.UUID, msg RoomManagerData) {
 	// g.mutex.Lock()
 	// defer g.mutex.Unlock()
 
-	if game, exists := g.activeGames[roomID]; exists && game.State == GameStateInProgress {
+	g.mutex.RLock()
+	game, gameExists := g.activeGames[roomID]
+	settings, settingsExists := g.roomSettings[roomID]
+	g.mutex.RUnlock() // 🛑 Okuma bitti, GameHub kilidini serbest bırak!
+
+	if gameExists && game.State == GameStateInProgress {
 		fmt.Printf("Oyun zaten devam ediyor. Yeni oyun başlatma isteği reddedildi - Room: %s\n", roomID)
 		// Oyunculara hata mesajı gönder
+		g.mutex.RUnlock()
 		g.hub.BroadcastMessage(roomID, &Message{
 			Type: "game_start_failed",
 			Content: map[string]interface{}{
@@ -502,12 +557,10 @@ func (g *GameHub) handleGameStarted(roomID uuid.UUID, msg RoomManagerData) {
 		return
 	}
 
-	// Odanın ayarlarını kontrol et
-	settings, exists := g.roomSettings[roomID]
-	if !exists {
+	if !settingsExists {
 		fmt.Printf("Oda ayarları bulunamadı, varsayılan ayarlar kullanılıyor - Room: %s\n", roomID)
 		settings = g.getDefaultSettings("Çizim ve Tahmin")
-		g.roomSettings[roomID] = settings
+
 	}
 
 	// Odadaki oyuncu sayısını kontrol et
@@ -531,65 +584,97 @@ func (g *GameHub) handleGameStarted(roomID uuid.UUID, msg RoomManagerData) {
 
 	// Odadaki oyuncuları al (Bu fonksiyonu Hub'a eklemen gerekecek)
 	players := g.getRoomPlayers(roomID)
+	initialPlayerCount := len(players)
 
-	// Yeni oyun oluştur
-	game := &Game{
-		RoomID:        roomID,
-		ModeName:      settings.ModeName,
-		ModeID:        settings.ModeID,
-		State:         GameStateInProgress,
-		Players:       players,
-		TurnCount:     0,
-		TotalRounds:   settings.TotalRounds,
-		RoundDuration: settings.RoundDuration,
-		LastMoveTime:  time.Now(),
+	if settings.TotalRounds < initialPlayerCount {
+		settings.TotalRounds = initialPlayerCount
 	}
 
-	// Oyun motorunu al ve oyunu başlat
-	engine, exists := g.gameEngines[settings.ModeID]
-	if !exists {
+	// Yeni oyun oluştur
+
+	newGame := &Game{
+		RoomID:      roomID,
+		ModeName:    settings.ModeName,
+		ModeID:      settings.ModeID,
+		State:       GameStateInProgress,
+		Players:     players,
+		TurnCount:   0,
+		TotalRounds: settings.TotalRounds,
+		//InitialPlayerCount: initialPlayerCount,
+		PreparationDuration: settings.PreparationDuration,
+		RoundDuration:       settings.RoundDuration,
+		LastMoveTime:        time.Now(),
+	}
+
+	g.mutex.RLock()
+	engine, engineExists := g.gameEngines[settings.ModeID]
+	g.mutex.RUnlock()
+	if !engineExists {
 		fmt.Printf("Oyun motoru bulunamadı: %s\n", settings.ModeID)
 		return
 	}
-	dge, _ := engine.(*DrawingGameEngine)
-	if err := dge.InitGame(game, players); err != nil {
+	dge, ok := engine.(*DrawingGameEngine)
+	if !ok {
+		log.Printf("ERROR: Oyun motoru beklenen tipte değil! ModeID: %s", settings.ModeID)
+		// Oyunculara hata mesajı gönderilebilir
+		return
+	}
+	if err := dge.InitGame(newGame, players); err != nil {
 		fmt.Printf("Oyun başlatılamadı: %v\n", err)
 		return
 	}
 
 	// Aktif oyunlar listesine ekle
-	g.activeGames[roomID] = game
-
+	g.mutex.Lock()
+	g.activeGames[roomID] = newGame
+	if !settingsExists {
+		g.roomSettings[roomID] = settings // 🛑 Ayar yoksa, onu da kaydet
+	}
+	g.mutex.Unlock()
 	// Oyun başladı mesajını tüm oyunculara gönder
 	response := &Message{
 		Type: "game_started",
 		Content: map[string]interface{}{
-			"room_id":        roomID,
-			"mode_name":      settings.ModeName,
-			"mode_id":        settings.ModeName,
-			"players":        g.playersToMap(players),
-			"total_rounds":   game.TotalRounds,
-			"round_duration": game.RoundDuration,
-			"current_round":  1,
+			"room_id":              roomID,
+			"mode_name":            settings.ModeName,
+			"mode_id":              settings.ModeName,
+			"players":              g.playersToMap(players),
+			"total_rounds":         newGame.TotalRounds,
+			"round_duration":       newGame.RoundDuration,
+			"initial_player_count": initialPlayerCount,
+			"preparation_duration": newGame.PreparationDuration,
+			"current_round":        1,
 		},
 	}
 	g.hub.BroadcastMessage(roomID, response) // 💡 İLK MESAJ GİTTİ!
 
 	go func(g *GameHub, dge *DrawingGameEngine, game *Game, roomID uuid.UUID) {
+		preparationDuration := time.Duration(game.PreparationDuration) * time.Second
+
+		game.Mutex.Lock()
+		dge.SendPreparationNotifications(game)
+		game.Mutex.Unlock()
+
+		log.Printf("FIRST_ROUND_PREP: Waiting %v seconds before starting first round for room %s",
+			game.PreparationDuration, roomID)
+
+		// 2. HAZIRLIK SÜRESİ BEKLE
+		time.Sleep(preparationDuration)
+
 		// 4. İLK TURU BAŞLAT
 		// game.Mutex'i burada kullanabilirsiniz (StartRound'un iç yapısına bağlı olarak).
-		// game.Mutex.Lock() // Eğer StartRound game objesini değiştiriyorsa
+		game.Mutex.Lock() // Eğer StartRound game objesini değiştiriyorsa
 		if err := dge.StartRound(game); err != nil {
 			fmt.Printf("GOROUTINE: İlk tur başlatılamadı: %v\n", err)
 		}
-		// game.Mutex.Unlock() // Eğer StartRound game objesini değiştiriyorsa
+		game.Mutex.Unlock() // Eğer StartRound game objesini değiştiriyorsa
 
 		// 5. ZAMANLAYICIYI BAŞLAT
 		duration := time.Duration(game.RoundDuration) * time.Second
 		// 💡 Bu çağrı RunListener'a sinyal göndereceği için, oyun döngüsü başlar.
 		g.startRoundTimer(roomID, duration)
 
-	}(g, dge, game, roomID)
+	}(g, dge, newGame, roomID)
 	fmt.Printf("Oyun başlatıldı - Room: %s, Mode: %s, Oyuncu Sayısı: %d\n",
 		roomID, settings.ModeName, len(players))
 }
@@ -599,29 +684,32 @@ func (g *GameHub) getDefaultSettings(modeName string) *GameSettings {
 	switch modeName {
 	case "Çizim ve Tahmin":
 		return &GameSettings{
-			ModeName:      modeName,
-			ModeID:        "1",
-			TotalRounds:   2, // Her oyuncu 2 kez çizer
-			RoundDuration: 60,
-			MaxPlayers:    8,
-			MinPlayers:    2,
+			ModeName:            modeName,
+			ModeID:              "1",
+			TotalRounds:         2, // Her oyuncu 2 kez çizer
+			RoundDuration:       60,
+			MaxPlayers:          8,
+			PreparationDuration: 5,
+			MinPlayers:          2,
 		}
 	case "Ortak Alan":
 		return &GameSettings{
-			ModeName:      modeName,
-			ModeID:        "2",
-			TotalRounds:   1,
-			RoundDuration: 120, //2 dakika
-			MaxPlayers:    10,
-			MinPlayers:    2,
+			ModeName:            modeName,
+			ModeID:              "2",
+			TotalRounds:         1,
+			RoundDuration:       120, //2 dakika
+			PreparationDuration: 5,
+			MaxPlayers:          10,
+			MinPlayers:          2,
 		}
 	default:
 		return &GameSettings{
-			ModeName:      "Çizim ve Tahmin",
-			TotalRounds:   2,
-			RoundDuration: 60,
-			MaxPlayers:    8,
-			MinPlayers:    2,
+			ModeName:            "Çizim ve Tahmin",
+			TotalRounds:         2,
+			RoundDuration:       60,
+			PreparationDuration: 5,
+			MaxPlayers:          8,
+			MinPlayers:          2,
 		}
 	}
 }
@@ -703,14 +791,99 @@ func (g *GameHub) IsGameActive(roomID uuid.UUID) bool {
 
 // Diğer handler metodları aynı kalacak...
 func (g *GameHub) handlePlayerMove(roomID uuid.UUID, msg RoomManagerData) {
-	// Önceki implementation aynı
+	//g.mutex.RLock() // ActiveGames ve GameEngines'a erişmek için
+	g.mutex.RLock()
+	game, exists := g.activeGames[roomID]
+
+	if !exists {
+		g.mutex.RUnlock() // 🛑 Erken çıkışta kilidi bırak!
+		log.Printf("PLAYER_MOVE_FAIL: Room %s, No active game found.", roomID)
+		return
+	}
+
+	// 2. Artık 'game' objesi nil değil. ModeID'yi güvenle okuyabiliriz.
+	engine, engineExists := g.gameEngines[game.ModeID]
+	g.mutex.RUnlock() // 🛑 RLock bitti, şimdi kilidi bı
+
+	if !engineExists || game.State != GameStateInProgress {
+		log.Printf("PLAYER_MOVE_FAIL: Room %s, Game state: %s or engine missing.", roomID, game.State)
+		return
+	}
+
+	// Mesajın içeriğinden PlayerID'yi al
+	moveData, ok := msg.Content.(map[string]interface{})
+	if !ok {
+		log.Printf("PLAYER_MOVE_FAIL: Invalid content format for room %s", roomID)
+		return
+	}
+
+	playerIDStr, ok := moveData["player_id"].(string)
+	if !ok {
+		log.Printf("PLAYER_MOVE_FAIL: Player ID missing in message for room %s", roomID)
+		return
+	}
+
+	playerID, err := uuid.Parse(playerIDStr)
+	if err != nil {
+		log.Printf("PLAYER_MOVE_FAIL: Invalid UUID format for room %s", roomID)
+		return
+	}
+	fmt.Printf("Player %s made a move in room %s: %v\n", playerID, roomID, moveData)
+
+	// // 🎯 KRİTİK ADIM: Hareketi oyun motoruna ilet
+	if err := engine.ProcessMove(game, playerID, moveData); err != nil {
+		log.Printf("PLAYER_MOVE_ERROR: %s, Error: %v", playerID, err)
+		// Oyuncuya hata mesajı gönderebilirsiniz.
+		// g.hub.SendMessageToUser(roomID, playerID, &Message{...})
+		return
+	}
+
+	// ProcessMove başarılı oldu, oyun durumu zaten yayınlanmıştır (DrawingGameEngine içinde).
+	log.Printf("Player %s's move processed successfully in room %s.", playerID, roomID)
+	return
+
 }
 
 func (g *GameHub) handleEndGame(roomID uuid.UUID, msg RoomManagerData) {
 	fmt.Println("handleEndGame called for room", roomID)
 	// Oyun bittiğinde roomSettings'i de temizle
+	g.mutex.Lock()
+
+	game, exists := g.activeGames[roomID]
+	if !exists {
+		g.mutex.Unlock()
+		log.Printf("No active game to end for room %s", roomID)
+		return
+	}
+
+	// Oyun durumunu güncelle
+	game.State = GameStateOver
+
+	// Oyunu aktif oyunlardan ve ayarlardan kaldır
 	delete(g.activeGames, roomID)
 	delete(g.roomSettings, roomID)
+
+	g.mutex.Unlock()
+
+	// Zamanlayıcıyı durdur (mutex dışında)
+	g.stopRoundTimer(roomID)
+
+	// Oyun bitiş mesajını yayınla
+	content := msg.Content.(map[string]interface{})
+	reason := content["reason"].(string)
+	message := content["message"].(string)
+
+	g.hub.BroadcastMessage(roomID, &Message{
+		Type: "game_ended",
+		Content: map[string]interface{}{
+			"room_id": roomID,
+			"reason":  reason,
+			"message": message,
+			"scores":  g.playersToMap(game.Players),
+		},
+	})
+
+	log.Printf("Game ended for room %s. Reason: %s", roomID, reason)
 
 	// Diğer işlemler...
 }

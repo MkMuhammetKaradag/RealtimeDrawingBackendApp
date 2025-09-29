@@ -4,6 +4,7 @@ package hub
 import (
 	"fmt"
 	"log"
+	"math/rand"
 
 	"github.com/google/uuid"
 )
@@ -85,25 +86,41 @@ func (dge *DrawingGameEngine) ProcessMove(game *Game, playerID uuid.UUID, moveDa
 		}
 
 		drawingData, _ := game.ModeData.(*DrawingGameData)
-		if guessText == drawingData.CurrentWord {
-			// Doğru tahmin! Oyuncuya puan ekle.
-			log.Printf("Player %s guessed the word correctly in room %s!", playerID, game.RoomID)
 
-			// Bu oyuncu zaten bilmişse bir şey yapma
-			if _, guessed := drawingData.GuessedPlayers[playerID]; !guessed {
+		// Tahmin çizerin kendisinden geldiyse (çizer çizdiği kelimeyi tahmin edemez)
+		if playerID == drawingData.CurrentDrawer {
+			// Çizici, tahmin göndermiş. Bunu bir hata olarak ele alabilir veya yok sayabilirsiniz.
+			return fmt.Errorf("drawer cannot guess the word")
+		}
+
+		// Kelime doğru tahmin edildi mi?
+		if guessText == drawingData.CurrentWord {
+			// Oyuncu zaten bilmiş mi kontrol et
+			if _, alreadyGuessed := drawingData.GuessedPlayers[playerID]; !alreadyGuessed {
+
+				// 🎯 KISIM 1: Oyuncuyu bilmişler listesine ekle (Tekrar puan almayı engeller)
 				drawingData.GuessedPlayers[playerID] = true
 
-				// Skor ekleme mantığı
+				log.Printf("Player %s guessed the word correctly in room %s!", playerID, game.RoomID)
+
+				// 🎯 KISIM 2: Skor ekleme mantığı: Hem Tahminci hem de Çizer puan kazanır
+				guesserScore := 10       // Tahminci puanı
+				drawerScorePerGuess := 5 // Çizerin her başarılı tahminden aldığı puan
+
 				for _, p := range game.Players {
 					if p.UserID == playerID {
-						p.Score += 10 // Örnek puan
-						break
+						// Tahminci puanı
+						p.Score += guesserScore
+					} else if p.UserID == drawingData.CurrentDrawer {
+						// Çizer puanı (Her doğru tahminde bir kez alır)
+						p.Score += drawerScorePerGuess
 					}
 				}
+
+				// Tur Bitiş Kontrolü
 				isRoundOver, _ := dge.CheckRoundStatus(game)
 				if isRoundOver {
 					// Tur bittiği için zamanlayıcıyı durdur ve turu bitir
-					// Burayı `GameHub`'a taşımalıyız
 					go dge.gameHub.handleRoundEnd(game.RoomID, "all_guessed")
 				}
 			}
@@ -145,7 +162,7 @@ func (dge *DrawingGameEngine) StartRound(game *Game) error {
 	drawingData.CanvasData = "{}"
 	fmt.Println("Current drawer is:", drawingData.CurrentDrawer)
 	// 💡 Kelime seçimi burada yapılır: drawingData.CurrentWord = dge.selectRandomWord()
-	drawingData.CurrentWord = "Kedi"                                  // Örnek olarak
+	drawingData.CurrentWord = dge.selectRandomWord()                  // Örnek olarak
 	fmt.Println("Selected word for drawer:", drawingData.CurrentWord) // Konsola yazdır
 
 	// 3. Bildirimleri Gönder
@@ -174,6 +191,26 @@ func (dge *DrawingGameEngine) StartRound(game *Game) error {
 	}
 
 	return nil
+}
+
+var defaultWordList = []string{
+	"Köpek", "Araba", "Bilgisayar", "Güneş", "Ayakkabı",
+	"Uçak", "Kütüphane", "Kahve", "Telefon", "Gözlük",
+	"Bisiklet", "Gitar", "Elma", "Yıldız", "Saat",
+}
+
+func (dge *DrawingGameEngine) selectRandomWord() string {
+	// Kelime listesi boşsa varsayılan bir değer dön
+	if len(defaultWordList) == 0 {
+		return "Resim"
+	}
+
+	// rand paketi zaten Go'nun standardıdır.
+	// 'math/rand' yerine 'crypto/rand' daha güvenli olsa da, oyun için 'math/rand' yeterlidir.
+	// Go 1.20 ve sonrası için bu şekilde kullanmak güvenlidir.
+	randomIndex := rand.Intn(len(defaultWordList))
+
+	return defaultWordList[randomIndex]
 }
 
 // 💡 Yeni Metot: Tur Bitince Yapılacaklar
@@ -245,4 +282,49 @@ func (dge *DrawingGameEngine) determineWinner(game *Game) []*Player {
 	}
 
 	return winners
+}
+
+// 🎯 YENİ METOT: Hazırlık Bildirimleri Gönder
+func (dge *DrawingGameEngine) SendPreparationNotifications(game *Game) {
+	fmt.Println("SendPreparationNotifications called for room", game.RoomID)
+
+	// Yeni tur için çizeri belirle (henüz StartRound çağrılmadı)
+	//_, _ := game.ModeData.(*DrawingGameData)
+
+	// Sıradaki çizeri hesapla
+	nextDrawer := game.ActivePlayer
+
+	// Tüm oyunculara hazırlık bildirimi gönder
+	for _, p := range game.Players {
+		if p.UserID == nextDrawer {
+			// Çizen olacak oyuncuya özel mesaj
+			dge.gameHub.hub.SendMessageToUser(game.RoomID, p.UserID, &Message{
+				Type: "round_preparation",
+				Content: map[string]interface{}{
+					"role":                 "drawer",
+					"drawer_id":            nextDrawer,
+					"preparation_duration": game.PreparationDuration,
+					"round_number":         game.TurnCount + 1,
+					"total_rounds":         game.TotalRounds,
+					"message":              fmt.Sprintf("%d saniye içinde çizim başlayacak. Hazır ol!", game.PreparationDuration),
+				},
+			})
+		} else {
+			// Tahmin edecek oyunculara mesaj
+			dge.gameHub.hub.SendMessageToUser(game.RoomID, p.UserID, &Message{
+				Type: "round_preparation",
+				Content: map[string]interface{}{
+					"role":                 "guesser",
+					"drawer_id":            nextDrawer,
+					"preparation_duration": game.PreparationDuration,
+					"round_number":         game.TurnCount + 1,
+					"total_rounds":         game.TotalRounds,
+					"message":              fmt.Sprintf("%d saniye içinde yeni tur başlayacak!", game.PreparationDuration),
+				},
+			})
+		}
+	}
+
+	log.Printf("Preparation notifications sent for room %s. Next drawer: %s, Duration: %ds",
+		game.RoomID, nextDrawer, game.PreparationDuration)
 }

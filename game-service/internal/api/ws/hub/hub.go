@@ -54,6 +54,10 @@ type Hub struct {
 		RoomID uuid.UUID
 		UserID uuid.UUID
 	}
+	inboundMessages chan struct {
+		RoomID uuid.UUID
+		Msg    RoomManagerData
+	}
 	repo    Repository
 	roomHub *roomHub
 	gameHub *GameHub // GameHub'ı buraya ekledi
@@ -69,25 +73,30 @@ func NewHub(redisClient *redis.Client) *Hub {
 		playerQuit: make(chan struct {
 			RoomID uuid.UUID
 			UserID uuid.UUID
-		}, 10),
+		}, 20),
+		inboundMessages: make(chan struct {
+			RoomID uuid.UUID
+			Msg    RoomManagerData
+		}, 100),
 		ctx: context.Background(),
 		//roomSubscribers: make(map[uuid.UUID]*redis.PubSub),
 
 	}
 	hub.gameHub = NewGameHub(hub)
 	hub.roomHub = NewRoomHub(hub.redisClient, hub)
-	go hub.GameHubListener()
+	// go hub.GameHubListener()
 	return hub
 }
-func (h *Hub) GameHubListener() {
-	for {
-		select {
-		case quit := <-h.playerQuit:
-			// GameHub'a mesajı ilet
-			h.gameHub.HandlePlayerQuit(quit.RoomID, quit.UserID)
-		}
-	}
-}
+
+//	func (h *Hub) GameHubListener() {
+//		for {
+//			select {
+//			case quit := <-h.playerQuit:
+//				// GameHub'a mesajı ilet
+//				h.gameHub.HandlePlayerQuit(quit.RoomID, quit.UserID)
+//			}
+//		}
+//	}
 func (h *Hub) GetRoomSettings(roomID uuid.UUID) *GameSettings {
 	h.gameHub.mutex.RLock()
 	defer h.gameHub.mutex.RUnlock()
@@ -114,12 +123,23 @@ func (h *Hub) Run(ctx context.Context) {
 			case client := <-h.unregister:
 				// `unregisterClient` client'ı haritadan siler.
 				h.unregisterClient(client)
+			case incoming := <-h.inboundMessages:
+				// Gelen mesajları işleme (örneğin, GameHub'a iletme)
+				h.gameHub.HandleGameMessage(incoming.RoomID, incoming.Msg)
 			case <-ctx.Done():
 				// Uygulama kapanınca
 				return
 			}
 		}
 	}()
+	// go func() {
+	// 	for incoming := range h.inboundMessages {
+	// 		// **Bu Goroutine, GameHub'ı senkronize olarak çağırır.**
+	// 		// Bu, aynı anda sadece bir mesajın GameHub'da işlenmesini garanti etmez,
+	// 		// ancak readPump'ın kilitlenmesini engeller.
+	// 		h.gameHub.HandleGameMessage(incoming.RoomID, incoming.Msg)
+	// 	}
+	// }()
 	//go h.roomHub.Run(ctx)
 }
 
@@ -289,21 +309,29 @@ func (h *Hub) readPump(client *domain.Client) {
 			}
 
 		case "game_started":
-			fmt.Printf("Game start request from user %s in room %s\n", client.ID, client.RoomID)
-			// creatorID, exists := h.GetRoomCreatorID(client.RoomID)
-			// if !exists {
-			// 	h.sendErrorToClient(client, "Room not found or creator info missing.")
-			// 	continue
-			// }
+			// Mesajın içeriğini güncellemeniz gerekiyorsa yapın
 
-			// if client.ID != creatorID {
-			// 	// Sadece yaratıcı oyunu başlatabilir.
-			// 	h.sendErrorToClient(client, "Only the room creator can start the game.")
-			// 	continue
-			// }
+			h.inboundMessages <- struct {
+				RoomID uuid.UUID
+				Msg    RoomManagerData
+			}{
+				RoomID: client.RoomID,
+				Msg:    msg,
+			}
 
-			// Yaratıcıysa oyunu başlat
-			h.gameHub.HandleGameMessage(client.RoomID, msg)
+		case "player_move":
+			// 💡 PlayerID'yi ekleyin
+			if contentMap, ok := msg.Content.(map[string]interface{}); ok {
+				contentMap["player_id"] = client.ID.String()
+			}
+
+			h.inboundMessages <- struct {
+				RoomID uuid.UUID
+				Msg    RoomManagerData
+			}{
+				RoomID: client.RoomID,
+				Msg:    msg,
+			}
 
 		}
 		// Mesaj işleme mantığı buraya gelecek.
