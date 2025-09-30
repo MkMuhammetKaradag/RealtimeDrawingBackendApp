@@ -17,11 +17,14 @@ const (
 )
 
 // IGameEngine, tüm oyun motorları için ortak bir arayüz tanımlar.
+
 type IGameEngine interface {
 	InitGame(game *Game, players []*Player) error
 	ProcessMove(game *Game, playerID uuid.UUID, moveData interface{}) error
-	CheckRoundStatus(game *Game) (bool, error)
-	// Diğer oyun mantığı metotları buraya eklenebilir.
+	StartRound(game *Game) error
+	EndRound(game *Game, reason string) bool
+	// Sadece bildirim gönderme gibi genel yardımcı metotlar arayüze eklenebilir.
+	SendPreparationNotifications(game *Game)
 }
 
 // Player, oyundaki bir oyuncuyu temsil eder.
@@ -106,6 +109,7 @@ func NewGameHub(hub *Hub) *GameHub {
 
 	// gameHub.gameEngines["Çizim ve Tahmin"] = NewDrawingGameEngine(gameHub)
 	gameHub.gameEngines["1"] = NewDrawingGameEngine(gameHub)
+	gameHub.gameEngines["2"] = NewCollaborativeArtEngine(gameHub)
 	// gameHub.gameEngines["Ortak Alan"] = NewDrawingGameEngine(gameHub)
 	// gameHub.gameEngines["serbest çizim"] = NewDrawingGameEngine(gameHub)
 	go gameHub.RunListener()
@@ -327,26 +331,39 @@ func (g *GameHub) handleRoundEnd(roomID uuid.UUID, reason string) {
 		log.Printf("Game engine not found for mode: %s", game.ModeID)
 		return
 	}
-	dge, _ := engine.(*DrawingGameEngine)
+	// dge, _ := engine.(*DrawingGameEngine)
 	log.Printf("HANDLE_ROUND_END: Attempting to acquire game.Mutex for room %s.", roomID)
 	// 3. Oyun durumunu güncellemek için Game kilidini alıyoruz.
 	game.Mutex.Lock()
 
 	// dge.EndRound metodu, puanlama ve tur/oyun bitiş kontrolünü yapar.
 	// Artık bu metodun içinde kilit yok.
-	shouldContinue := dge.EndRound(game, reason)
+	shouldContinue := engine.EndRound(game, reason)
 
 	// Game kilidini serbest bırak (çok önemli!).
 	game.Mutex.Unlock()
 	log.Printf("HANDLE_ROUND_END: EndRound finished for room %s. Should continue: %v", roomID, shouldContinue)
-
+	gameSnapshot := *game
+	var cleanModeData interface{}
+	if game.ModeID == "2" {
+		artData, ok := game.ModeData.(*CollaborativeArtData)
+		if ok {
+			// RoundHistory'si olmayan yeni bir CollaborativeArtData oluştur.
+			cleanModeData = &CollaborativeArtData{
+				CurrentWord:    artData.CurrentWord,
+				CurrentStrokes: artData.CurrentStrokes, // Bu zaten boş olmalı
+				RoundHistory:   nil,                    // 🔑 ÖNEMLİ: Geçmişi gönderme!
+			}
+			gameSnapshot.ModeData = cleanModeData
+		}
+	}
 	// 4. Her tur bittiğinde oyunculara genel bir "tur bitti" mesajı yayınla.
 	g.hub.BroadcastMessage(roomID, &Message{
 		Type: "round_ended",
 		Content: map[string]interface{}{
 			"room_id": roomID,
 			"reason":  reason,
-			"game":    game, // Güncel oyun durumunu gönder
+			"game":    gameSnapshot, // Güncel oyun durumunu gönder
 		},
 	})
 
@@ -356,11 +373,11 @@ func (g *GameHub) handleRoundEnd(roomID uuid.UUID, reason string) {
 		log.Printf("NEXT_ROUND: Starting in background for room %s.", roomID)
 		// Yeniden Game kilidini alıyoruz, çünkü StartRound oyun nesnesini değiştirecek.
 		// ⚠️ KRİTİK DEĞİŞİKLİK: StartRound ve Timer'ı yeni bir Goroutine'e taşı!
-		go func(g *GameHub, dge *DrawingGameEngine, game *Game, roomID uuid.UUID) {
+		go func(g *GameHub, engine IGameEngine, game *Game, roomID uuid.UUID) {
 			preparationDuration := time.Duration(game.PreparationDuration) * time.Second
 
 			game.Mutex.Lock()
-			dge.SendPreparationNotifications(game)
+			engine.SendPreparationNotifications(game)
 			game.Mutex.Unlock()
 
 			log.Printf("PREPARATION: Waiting %v seconds before starting round for room %s",
@@ -371,7 +388,7 @@ func (g *GameHub) handleRoundEnd(roomID uuid.UUID, reason string) {
 			// Yeni turu başlat (Game kilidi GOROUTINE içinde alınmalı!)
 			game.Mutex.Lock()
 
-			if err := dge.StartRound(game); err != nil {
+			if err := engine.StartRound(game); err != nil {
 				log.Printf("GOROUTINE ERROR: Error starting next round: %v", err)
 			}
 
@@ -381,20 +398,46 @@ func (g *GameHub) handleRoundEnd(roomID uuid.UUID, reason string) {
 			duration := time.Duration(game.RoundDuration) * time.Second
 			g.startRoundTimer(roomID, duration)
 
-		}(g, dge, game, roomID) // Değişkenleri Goroutine'e geçir.
+		}(g, engine, game, roomID) // Değişkenleri Goroutine'e geçir.
 
 		log.Printf("NEXT_ROUND: Starting in background for room %s.", roomID)
 
 	} else {
-		// Oyun bittiyse:
-		log.Printf("GAME_OVER: Game finished for room %s. Total Rounds: %d", roomID, game.TotalRounds)
+		// 🚨 OYUN BİTTİYSE: Moda özel sonlandırma ve raporlama.
+		log.Printf("GAME_OVER: Game finished for room %s. Mode: %s", roomID, game.ModeID)
+
+		gameOverContent := make(map[string]interface{})
+		gameOverContent["scores"] = game.Players // Skorları her zaman göndermek kötü değil.
+
+		// 🎯 KRİTİK DEĞİŞİKLİK: Sadece DrawingGameEngine gibi puanlamalı modlar için kazananı belirle.
+		if game.ModeID == "1" {
+			// Motoru somut tipine dönüştürmemiz GEREKİYOR, çünkü determineWinner IGameEngine'de yok.
+			// Bu, arayüzün zayıflığıdır, ancak puanlamasız modları desteklemek için gerekli bir tavizdir.
+			dge, ok := engine.(*DrawingGameEngine)
+			if ok {
+				gameOverContent["winner"] = dge.determineWinner(game)
+			}
+		} else if game.ModeID == "2" {
+			// CollaborativeArtEngine'e özel bir "Oyun Bitti" aksiyonu varsa çağır.
+			// Örneğin, önceden tanımladığınız SendFinalArtReport metodu buraya gelir.
+			// Not: Bu çağrı zaten EndRound içinde de yapılıyor olabilir, kontrol edin.
+			// Eğer SendFinalArtReport çağrısı EndRound içinde yapılmıyorsa:
+			// cae, ok := engine.(*CollaborativeArtEngine)
+			// if ok { cae.SendFinalArtReport(game) }
+			cae, ok := engine.(*CollaborativeArtEngine)
+			if ok {
+				// Bu, RoundHistory'yi toplayıp özel bir 'game_over_report' mesajı yayınlar.
+				cae.SendFinalArtReport(game)
+			}
+			// Ortak Sanat Projesinde kazanan yerine sadece final rapor bilgisi gönderilir.
+			gameOverContent["message"] = "Ortak Sanat Projesi Tamamlandı. Lütfen Raporu kontrol edin."
+
+		}
+
 		// Oyun Bitti mesajını yayınla.
 		g.hub.BroadcastMessage(game.RoomID, &Message{
-			Type: "game_over",
-			Content: map[string]interface{}{
-				"scores": game.Players,
-				"winner": dge.determineWinner(game),
-			},
+			Type:    "game_over",
+			Content: gameOverContent,
 		})
 
 		// Aktif oyunlardan kaldır.
@@ -457,10 +500,12 @@ func (g *GameHub) handleGameModeChange(roomID uuid.UUID, msg RoomManagerData) {
 	settings, exists := g.roomSettings[roomID]
 	if !exists {
 		settings = g.getDefaultSettings(modeID)
+		settings.ModeID = modeID
+		settings.ModeName = modeData["mode_name"].(string)
 	} else {
 		settings.ModeID = modeID
 		// Mode değiştiğinde ayarları yeniden hesapla
-		g.calculateGameSettings(roomID, settings)
+		// g.calculateGameSettings(roomID, settings)
 	}
 
 	g.roomSettings[roomID] = settings
@@ -610,16 +655,11 @@ func (g *GameHub) handleGameStarted(roomID uuid.UUID, msg RoomManagerData) {
 	engine, engineExists := g.gameEngines[settings.ModeID]
 	g.mutex.RUnlock()
 	if !engineExists {
-		fmt.Printf("Oyun motoru bulunamadı: %s\n", settings.ModeID)
+		fmt.Printf("Oyun motoru bulunamadı: %v\n", settings)
 		return
 	}
-	dge, ok := engine.(*DrawingGameEngine)
-	if !ok {
-		log.Printf("ERROR: Oyun motoru beklenen tipte değil! ModeID: %s", settings.ModeID)
-		// Oyunculara hata mesajı gönderilebilir
-		return
-	}
-	if err := dge.InitGame(newGame, players); err != nil {
+
+	if err := engine.InitGame(newGame, players); err != nil {
 		fmt.Printf("Oyun başlatılamadı: %v\n", err)
 		return
 	}
@@ -648,11 +688,11 @@ func (g *GameHub) handleGameStarted(roomID uuid.UUID, msg RoomManagerData) {
 	}
 	g.hub.BroadcastMessage(roomID, response) // 💡 İLK MESAJ GİTTİ!
 
-	go func(g *GameHub, dge *DrawingGameEngine, game *Game, roomID uuid.UUID) {
+	go func(g *GameHub, engine IGameEngine, game *Game, roomID uuid.UUID) {
 		preparationDuration := time.Duration(game.PreparationDuration) * time.Second
 
 		game.Mutex.Lock()
-		dge.SendPreparationNotifications(game)
+		engine.SendPreparationNotifications(game)
 		game.Mutex.Unlock()
 
 		log.Printf("FIRST_ROUND_PREP: Waiting %v seconds before starting first round for room %s",
@@ -664,7 +704,7 @@ func (g *GameHub) handleGameStarted(roomID uuid.UUID, msg RoomManagerData) {
 		// 4. İLK TURU BAŞLAT
 		// game.Mutex'i burada kullanabilirsiniz (StartRound'un iç yapısına bağlı olarak).
 		game.Mutex.Lock() // Eğer StartRound game objesini değiştiriyorsa
-		if err := dge.StartRound(game); err != nil {
+		if err := engine.StartRound(game); err != nil {
 			fmt.Printf("GOROUTINE: İlk tur başlatılamadı: %v\n", err)
 		}
 		game.Mutex.Unlock() // Eğer StartRound game objesini değiştiriyorsa
@@ -674,7 +714,7 @@ func (g *GameHub) handleGameStarted(roomID uuid.UUID, msg RoomManagerData) {
 		// 💡 Bu çağrı RunListener'a sinyal göndereceği için, oyun döngüsü başlar.
 		g.startRoundTimer(roomID, duration)
 
-	}(g, dge, newGame, roomID)
+	}(g, engine, newGame, roomID)
 	fmt.Printf("Oyun başlatıldı - Room: %s, Mode: %s, Oyuncu Sayısı: %d\n",
 		roomID, settings.ModeName, len(players))
 }
@@ -715,17 +755,17 @@ func (g *GameHub) getDefaultSettings(modeName string) *GameSettings {
 }
 
 // calculateGameSettings, oda durumuna göre ayarları hesaplar
-func (g *GameHub) calculateGameSettings(roomID uuid.UUID, settings *GameSettings) {
-	playerCount := g.hub.GetRoomClientCount(roomID)
+// func (g *GameHub) calculateGameSettings(roomID uuid.UUID, settings *GameSettings) {
+// 	playerCount := g.hub.GetRoomClientCount(roomID)
 
-	// Çizim ve Tahmin modunda her oyuncu çizecekse
-	if settings.ModeName == "Çizim ve Tahmin" {
-		// Her oyuncunun çizme fırsatı olması için round sayısını ayarla
-		if playerCount > 0 {
-			settings.TotalRounds = playerCount * 2 // Her oyuncu 2 kez çizer
-		}
-	}
-}
+// 	// Çizim ve Tahmin modunda her oyuncu çizecekse
+// 	if settings.ModeName == "Çizim ve Tahmin" {
+// 		// Her oyuncunun çizme fırsatı olması için round sayısını ayarla
+// 		if playerCount > 0 {
+// 			settings.TotalRounds = playerCount * 2 // Her oyuncu 2 kez çizer
+// 		}
+// 	}
+// }
 
 // getRoomPlayers, odadaki oyuncuları Player yapısına dönüştürür
 func (g *GameHub) getRoomPlayers(roomID uuid.UUID) []*Player {
