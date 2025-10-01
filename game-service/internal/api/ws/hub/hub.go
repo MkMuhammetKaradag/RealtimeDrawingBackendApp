@@ -205,42 +205,71 @@ func (h *Hub) registerClient(client *domain.Client) {
 func (h *Hub) unregisterClient(client *domain.Client) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
-	if client.RoomID != uuid.Nil {
-		// İlgili odadan client'ı kaldır
-		if roomClients, ok := h.roomsClients[client.RoomID]; ok {
-			delete(roomClients, client.ID)
-			log.Printf("Client %s unregistered from room %s. Remaining: %d", client.ID, client.RoomID, len(roomClients))
 
-			// 💡 PlayerQuit kanalına bilgi gönder
-			h.playerQuit <- struct {
-				RoomID uuid.UUID
-				UserID uuid.UUID
-			}{RoomID: client.RoomID, UserID: client.ID}
-		}
-	}
-	if roomClients, ok := h.roomsClients[client.RoomID]; ok {
-		if _, ok := roomClients[client.ID]; ok {
-			delete(roomClients, client.ID)
-			if len(roomClients) == 0 {
-
-				h.roomHub.StopSubscriber(client.RoomID)
-
-				h.roomHub.StopSubscriber(client.RoomID)
-				delete(h.roomsClients, client.RoomID)
-				//h.stopRoomSubscriber(client.RoomID)
-				//h.stopRoomSubscriber(client.RoomID)
-			}
-		}
+	if client.RoomID == uuid.Nil {
+		log.Printf("Client %s has no room association", client.ID)
+		return
 	}
 
-	// Sadece kanal açık değilse kapatmaya çalış
+	// İlgili odadan client'ı kaldır
+	roomClients, ok := h.roomsClients[client.RoomID]
+	if !ok {
+		log.Printf("Room %s not found in roomsClients", client.RoomID)
+		return
+	}
+
+	// Client'ı roomClients'tan sil
+	if _, exists := roomClients[client.ID]; !exists {
+		log.Printf("Client %s not found in room %s", client.ID, client.RoomID)
+		return
+	}
+
+	delete(roomClients, client.ID)
+	log.Printf("Client %s unregistered from room %s. Remaining: %d",
+		client.ID, client.RoomID, len(roomClients))
+
+	// 💡 PlayerQuit sinyalini NON-BLOCKING şekilde gönder
 	select {
-	case <-client.Send:
+	case h.playerQuit <- struct {
+		RoomID uuid.UUID
+		UserID uuid.UUID
+	}{RoomID: client.RoomID, UserID: client.ID}:
+		log.Printf("PlayerQuit signal sent for user %s in room %s", client.ID, client.RoomID)
 	default:
+		log.Printf("WARNING: PlayerQuit channel full, signal dropped for user %s", client.ID)
+	}
+
+	// Oda boşaldıysa temizle
+	if len(roomClients) == 0 {
+		log.Printf("Room %s is now empty, cleaning up", client.RoomID)
+		h.roomHub.StopSubscriber(client.RoomID)
+		delete(h.roomsClients, client.RoomID)
+	}
+
+	// Send kanalını güvenli şekilde kapat
+	h.closeSendChannel(client)
+}
+func (h *Hub) closeSendChannel(client *domain.Client) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Recovered from panic while closing channel for client %s: %v", client.ID, r)
+		}
+	}()
+
+	// Kanalın zaten kapalı olup olmadığını kontrol et
+	select {
+	case _, ok := <-client.Send:
+		if ok {
+			// Kanal açık, kapat
+			close(client.Send)
+			log.Printf("Closed send channel for client %s", client.ID)
+		}
+	default:
+		// Kanal boş ve açık, kapat
 		close(client.Send)
+		log.Printf("Closed send channel for client %s", client.ID)
 	}
 }
-
 func (h *Hub) closeClientConnection(userID uuid.UUID) {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
@@ -496,4 +525,42 @@ func (h *Hub) SendMessageToUser(roomID uuid.UUID, userID uuid.UUID, msg *Message
 		log.Printf("Client %s's send channel is full, dropping message.", client.ID)
 		return fmt.Errorf("client send channel is full")
 	}
+}
+func (h *Hub) IsGameActive(roomID uuid.UUID) bool {
+
+	return h.gameHub.IsGameActive(roomID)
+}
+func (h *Hub) GetActiveGame(roomID uuid.UUID) *Game {
+
+	return h.gameHub.GetActiveGame(roomID)
+}
+
+func (h *Hub) IsPlayerInActiveGame(roomID, userID uuid.UUID) bool {
+	h.gameHub.mutex.RLock()
+	defer h.gameHub.mutex.RUnlock()
+
+	game, exists := h.gameHub.activeGames[roomID]
+	if !exists {
+		return false
+	}
+
+	for _, player := range game.Players {
+		fmt.Println("Checking player:", player.UserID, "against userID:", userID)
+		if player.UserID == userID {
+			return true
+		}
+	}
+	return false
+}
+func (h *Hub) IsClientConnected(roomID, userID uuid.UUID) bool {
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	roomClients, ok := h.roomsClients[roomID]
+	if !ok {
+		return false
+	}
+
+	_, exists := roomClients[userID]
+	return exists
 }

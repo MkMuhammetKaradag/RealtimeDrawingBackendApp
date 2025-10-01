@@ -29,9 +29,10 @@ type IGameEngine interface {
 
 // Player, oyundaki bir oyuncuyu temsil eder.
 type Player struct {
-	UserID   uuid.UUID
-	Username string
-	Score    int
+	UserID      uuid.UUID
+	Username    string
+	Score       int
+	IsConnected bool
 	// Oyuncuya özgü diğer veriler
 }
 
@@ -85,12 +86,13 @@ type GameHub struct {
 	roomSettings    map[uuid.UUID]*GameSettings
 	roundTimers     map[uuid.UUID]context.CancelFunc
 	timerWaitGroups map[uuid.UUID]*sync.WaitGroup
-	roundEndSignal  chan struct {
-		RoomID uuid.UUID
-		Reason string
-	}
+	roundEndSignal  chan RoundEndSignal
 
 	mutex sync.RWMutex
+}
+type RoundEndSignal struct {
+	RoomID uuid.UUID
+	Reason string
 }
 
 func NewGameHub(hub *Hub) *GameHub {
@@ -101,10 +103,7 @@ func NewGameHub(hub *Hub) *GameHub {
 		gameEngines:     make(map[string]IGameEngine),
 		roundTimers:     make(map[uuid.UUID]context.CancelFunc),
 		timerWaitGroups: make(map[uuid.UUID]*sync.WaitGroup),
-		roundEndSignal: make(chan struct {
-			RoomID uuid.UUID
-			Reason string
-		}, 5),
+		roundEndSignal:  make(chan RoundEndSignal, 5),
 	}
 
 	// gameHub.gameEngines["Çizim ve Tahmin"] = NewDrawingGameEngine(gameHub)
@@ -116,6 +115,11 @@ func NewGameHub(hub *Hub) *GameHub {
 	return gameHub
 }
 
+func (gh *GameHub) GetActiveGame(roomID uuid.UUID) *Game {
+	gh.mutex.RLock()
+	defer gh.mutex.RUnlock()
+	return gh.activeGames[roomID]
+}
 func (g *GameHub) RunListener() {
 	for {
 		select {
@@ -144,31 +148,20 @@ func (g *GameHub) HandlePlayerQuit(roomID uuid.UUID, userID uuid.UUID) {
 		return
 	}
 
-	// Oyuncu listesinden çıkar
-	newPlayers := make([]*Player, 0, len(game.Players)-1)
-	playerFound := false
-	var removedPlayer *Player
-
+	// 🔍 Oyuncuyu bul
+	var targetPlayer *Player
 	for _, p := range game.Players {
 		if p.UserID == userID {
-			playerFound = true
-			removedPlayer = p
-			continue
+			targetPlayer = p
+			break
 		}
-		newPlayers = append(newPlayers, p)
 	}
 
-	if !playerFound {
+	if targetPlayer == nil {
 		g.mutex.Unlock()
 		log.Printf("Player %s not found in game", userID)
 		return
 	}
-
-	// Oyuncu listesini güncelle
-	game.Players = newPlayers
-	remainingPlayerCount := len(game.Players)
-
-	log.Printf("Player %s removed. Remaining players: %d", userID, remainingPlayerCount)
 
 	// Oyun ayarlarını kontrol et
 	settings, settingsExist := g.roomSettings[roomID]
@@ -178,33 +171,172 @@ func (g *GameHub) HandlePlayerQuit(roomID uuid.UUID, userID uuid.UUID) {
 		return
 	}
 
-	// Kalan oyuncu sayısı minimum sayısından az mı?
-	if remainingPlayerCount < settings.MinPlayers {
-		log.Printf("Insufficient players (%d < %d). Ending game for room %s",
-			remainingPlayerCount, settings.MinPlayers, roomID)
+	// Ayrılan oyuncu aktif çizen miydi?
+	wasActiveDrawer := game.ActivePlayer == userID
 
-		// Mutex'i unlock et çünkü handleEndGame içinde tekrar lock alınacak
+	g.mutex.Unlock()
+
+	// 🆕 Reconnect için grace period (30 saniye) başlat
+	go g.handleDisconnectWithGracePeriod(roomID, userID, wasActiveDrawer, settings.MinPlayers)
+	// // Oyuncu listesinden çıkar
+	// newPlayers := make([]*Player, 0, len(game.Players)-1)
+	// playerFound := false
+	// var removedPlayer *Player
+
+	// for _, p := range game.Players {
+	// 	if p.UserID == userID {
+	// 		playerFound = true
+	// 		removedPlayer = p
+	// 		continue
+	// 	}
+	// 	newPlayers = append(newPlayers, p)
+	// }
+
+	// if !playerFound {
+	// 	g.mutex.Unlock()
+	// 	log.Printf("Player %s not found in game", userID)
+	// 	return
+	// }
+
+	// // Oyuncu listesini güncelle
+	// game.Players = newPlayers
+	// remainingPlayerCount := len(game.Players)
+
+	// log.Printf("Player %s removed. Remaining players: %d", userID, remainingPlayerCount)
+
+	// // Oyun ayarlarını kontrol et
+	// settings, settingsExist := g.roomSettings[roomID]
+	// if !settingsExist {
+	// 	g.mutex.Unlock()
+	// 	log.Printf("WARNING: Room settings not found for room %s", roomID)
+	// 	return
+	// }
+
+	// // Ayrılan oyuncu aktif çizen miydi?
+	// wasActiveDrawer := game.ActivePlayer == userID
+
+	// // 🔥 ÖNEMLİ: Mutex'i burada unlock et - çünkü aşağıdaki işlemler lock gerektiriyor
+	// g.mutex.Unlock()
+
+	// // Kalan oyuncu sayısı minimum sayısından az mı?
+	// if remainingPlayerCount < settings.MinPlayers {
+	// 	log.Printf("Insufficient players (%d < %d). Ending game for room %s",
+	// 		remainingPlayerCount, settings.MinPlayers, roomID)
+
+	// 	// Zamanlayıcıyı durdur
+	// 	g.stopRoundTimer(roomID)
+
+	// 	// Oyunu bitir
+	// 	g.handleEndGame(roomID, RoomManagerData{
+	// 		Type: "end_game",
+	// 		Content: map[string]interface{}{
+	// 			"room_id": roomID,
+	// 			"reason":  "insufficient_players",
+	// 			"message": fmt.Sprintf("Oyun sonlandırıldı. Minimum %d oyuncu gerekli.", settings.MinPlayers),
+	// 		},
+	// 	})
+	// 	return
+	// }
+
+	// // Oyunculara ayrılma bildirimini gönder
+	// g.hub.BroadcastMessage(roomID, &Message{
+	// 	Type: "player_left",
+	// 	Content: map[string]interface{}{
+	// 		"room_id":       roomID,
+	// 		"user_id":       userID,
+	// 		"username":      removedPlayer.Username,
+	// 		"remaining":     remainingPlayerCount,
+	// 		"active_drawer": wasActiveDrawer,
+	// 	},
+	// })
+
+	// // Eğer ayrılan oyuncu çizen ise, turu bitir
+	// if wasActiveDrawer {
+	// 	log.Printf("Active drawer %s left. Ending round for room %s", userID, roomID)
+
+	// 	// 💡 NON-BLOCKING şekilde roundEndSignal gönder
+	// 	select {
+	// 	case g.roundEndSignal <- RoundEndSignal{
+	// 		RoomID: roomID,
+	// 		Reason: "drawer_left",
+	// 	}:
+	// 		log.Printf("Round end signal sent for room %s", roomID)
+	// 	default:
+	// 		log.Printf("WARNING: roundEndSignal channel full, calling handleRoundEnd directly")
+	// 		g.handleRoundEnd(roomID, "drawer_left")
+	// 	}
+	// }
+}
+
+func (g *GameHub) handleDisconnectWithGracePeriod(roomID, userID uuid.UUID, wasActiveDrawer bool, minPlayers int) {
+	gracePeriod := 30 * time.Second
+	log.Printf("Starting grace period (%v) for player %s in room %s", gracePeriod, userID, roomID)
+
+	// Grace period süresi boyunca bekle
+	timer := time.NewTimer(gracePeriod)
+	defer timer.Stop()
+
+	<-timer.C
+
+	// Süre doldu, oyuncu hala bağlanmadı mı kontrol et
+	g.mutex.Lock()
+	game, exists := g.activeGames[roomID]
+	if !exists || game.State != GameStateInProgress {
 		g.mutex.Unlock()
+		log.Printf("Game no longer active for room %s", roomID)
+		return
+	}
 
-		// Zamanlayıcıyı durdur
+	// 🔍 Oyuncu hala oyunda mı ve bağlı değil mi?
+	playerStillDisconnected := false
+	var removedPlayer *Player
+	newPlayers := make([]*Player, 0, len(game.Players)-1)
+
+	for _, p := range game.Players {
+		if p.UserID == userID {
+			// Hub'dan kontrol et - oyuncu yeniden bağlandı mı?
+			if g.hub.IsClientConnected(roomID, userID) {
+				log.Printf("Player %s reconnected within grace period, keeping in game", userID)
+				g.mutex.Unlock()
+				return
+			}
+			playerStillDisconnected = true
+			removedPlayer = p
+			continue
+		}
+		newPlayers = append(newPlayers, p)
+	}
+
+	if !playerStillDisconnected {
+		g.mutex.Unlock()
+		log.Printf("Player %s not found or already removed from game", userID)
+		return
+	}
+
+	// Oyuncuyu listeden çıkar
+	game.Players = newPlayers
+	remainingPlayerCount := len(game.Players)
+
+	log.Printf("Grace period expired. Player %s removed. Remaining players: %d", userID, remainingPlayerCount)
+
+	g.mutex.Unlock()
+
+	// Kalan oyuncu sayısı yetersiz mi?
+	if remainingPlayerCount < minPlayers {
+		log.Printf("Insufficient players (%d < %d). Ending game for room %s",
+			remainingPlayerCount, minPlayers, roomID)
+
 		g.stopRoundTimer(roomID)
-
-		// Oyunu bitir
 		g.handleEndGame(roomID, RoomManagerData{
 			Type: "end_game",
 			Content: map[string]interface{}{
+				"room_id": roomID,
 				"reason":  "insufficient_players",
-				"message": fmt.Sprintf("Oyun sonlandırıldı. Minimum %d oyuncu gerekli.", settings.MinPlayers),
+				"message": fmt.Sprintf("Oyun sonlandırıldı. Minimum %d oyuncu gerekli.", minPlayers),
 			},
 		})
 		return
 	}
-
-	// Ayrılan oyuncu aktif çizen miydi?
-	wasActiveDrawer := game.ActivePlayer == userID
-
-	// Mutex'i unlock et
-	g.mutex.Unlock()
 
 	// Oyunculara ayrılma bildirimini gönder
 	g.hub.BroadcastMessage(roomID, &Message{
@@ -218,10 +350,20 @@ func (g *GameHub) HandlePlayerQuit(roomID uuid.UUID, userID uuid.UUID) {
 		},
 	})
 
-	// Eğer ayrılan oyuncu çizen ise, turu bitir
 	if wasActiveDrawer {
 		log.Printf("Active drawer %s left. Ending round for room %s", userID, roomID)
-		g.handleRoundEnd(roomID, "drawer_left")
+
+		// 💡 NON-BLOCKING şekilde roundEndSignal gönder
+		select {
+		case g.roundEndSignal <- RoundEndSignal{
+			RoomID: roomID,
+			Reason: "drawer_left",
+		}:
+			log.Printf("Round end signal sent for room %s", roomID)
+		default:
+			log.Printf("WARNING: roundEndSignal channel full, calling handleRoundEnd directly")
+			g.handleRoundEnd(roomID, "drawer_left")
+		}
 	}
 }
 func (g *GameHub) startRoundTimer(roomID uuid.UUID, duration time.Duration) {
@@ -460,14 +602,7 @@ func (g *GameHub) HandleGameMessage(roomID uuid.UUID, msg RoomManagerData) {
 		g.handleGameStarted(roomID, msg)
 	case "player_move":
 		g.handlePlayerMove(roomID, msg)
-	// case "end_game":
-	// 	g.handleEndGame(roomID, msg)
-	// case "drawing_data":
-	// 	g.handleDrawingData(roomID, msg)
-	// case "guess_word":
-	// 	g.handleGuessWord(roomID, msg)
-	// case "next_round":
-	// 	g.handleNextRound(roomID, msg)
+
 	default:
 		fmt.Printf("GameHub: Bilinmeyen mesaj tipi: %s\n", msg.Type)
 	}
@@ -579,8 +714,6 @@ func (g *GameHub) handleGameSettingsUpdate(roomID uuid.UUID, msg RoomManagerData
 // handleGameStarted, oyun başlatıldığında çağrılır
 func (g *GameHub) handleGameStarted(roomID uuid.UUID, msg RoomManagerData) {
 	fmt.Printf("Oyun başlatılıyor - Room: %s\n", roomID)
-	// g.mutex.Lock()
-	// defer g.mutex.Unlock()
 
 	g.mutex.RLock()
 	game, gameExists := g.activeGames[roomID]
@@ -590,7 +723,7 @@ func (g *GameHub) handleGameStarted(roomID uuid.UUID, msg RoomManagerData) {
 	if gameExists && game.State == GameStateInProgress {
 		fmt.Printf("Oyun zaten devam ediyor. Yeni oyun başlatma isteği reddedildi - Room: %s\n", roomID)
 		// Oyunculara hata mesajı gönder
-		g.mutex.RUnlock()
+
 		g.hub.BroadcastMessage(roomID, &Message{
 			Type: "game_start_failed",
 			Content: map[string]interface{}{

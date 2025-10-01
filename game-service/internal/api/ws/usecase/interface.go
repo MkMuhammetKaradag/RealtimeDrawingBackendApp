@@ -3,6 +3,7 @@ package wsUsecase
 import (
 	"context"
 	"game-service/domain"
+	"game-service/internal/api/ws/hub"
 
 	"github.com/gofiber/contrib/websocket"
 	"github.com/google/uuid"
@@ -20,4 +21,8 @@ type Hub interface {
 	RegisterClient(client *domain.Client)
 	UnregisterClient(client *domain.Client)
 	GetRoomClientCount(roomID uuid.UUID) int
+	IsGameActive(roomID uuid.UUID) bool
+	GetActiveGame(roomID uuid.UUID) *hub.Game
+	IsPlayerInActiveGame(roomID, userID uuid.UUID) bool
+	BroadcastMessage(roomID uuid.UUID, msg *hub.Message)
 }

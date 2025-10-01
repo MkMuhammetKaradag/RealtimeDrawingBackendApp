@@ -19,4 +19,6 @@ type Room struct {
 	CreatedAt      time.Time `json:"created_at"`
 	StartedAt      time.Time `json:"started_at,omitempty"`
 	FinishedAt     time.Time `json:"finished_at,omitempty"`
+	ModeName       string    `json:"mode_name"`
+	IsUserInRoom   bool      `json:"is_user_in_room"`
 }

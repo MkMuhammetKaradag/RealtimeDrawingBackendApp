@@ -3,6 +3,7 @@ package bootstrap
 import (
 	"context"
 	"game-service/config"
+	"game-service/domain"
 	"game-service/internal/initializer"
 
 	"github.com/google/uuid"
@@ -16,6 +17,7 @@ type PostgresRepository interface {
 	JoinRoom(ctx context.Context, roomID, userID uuid.UUID, roomCode string) error
 	LeaveRoom(ctx context.Context, roomID, userID uuid.UUID) error
 	UpdateRoomGameMode(ctx context.Context, roomID uuid.UUID, userID uuid.UUID, newGameModeID int) error
+	GetVisibleRooms(ctx context.Context, userID uuid.UUID) ([]domain.Room, error)
 }
 
 func InitDatabase(config config.Config) PostgresRepository {

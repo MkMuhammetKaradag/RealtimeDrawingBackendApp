@@ -22,11 +22,16 @@ func SetupHTTPHandlers(postgresRepository PostgresRepository, sessionManager Ses
 
 	updateRoomeGameModeUseCase := httpUsecase.NewUpdateRoomGamemodeUseCase(postgresRepository, roomRedisManager)
 	updateRoomeGameModeHandler := httpHandler.NewUpdateRoomGameModeHandler(updateRoomeGameModeUseCase)
+
+	getVisibleRoomsModeUseCase := httpUsecase.NewGetVisibleRoomsUseCase(postgresRepository)
+	getVisibleRoomsModeHandler := httpHandler.NewGetVisibleRoomsHandler(getVisibleRoomsModeUseCase)
+
 	return map[string]interface{}{
 		"create-room":           createdRoomeHandler,
 		"join-room":             joinRoomeHandler,
 		"leave-room":            leaveRoomeHandler,
 		"update-room-game-mode": updateRoomeGameModeHandler,
+		"get-rooms":             getVisibleRoomsModeHandler,
 	}
 }
 func SetupMessageHandlers(postgresRepository PostgresRepository) map[pb.MessageType]MessageHandler {
