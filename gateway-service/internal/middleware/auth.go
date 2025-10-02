@@ -28,10 +28,12 @@ func AuthGuard() fiber.Handler {
 				// WebSocket bağlantıları için token'ı query parametrelerinden veya Authorization header'ından al
 				token = c.Query("token")
 				fmt.Println("WebSocket bağlantısı tespit edildi, token kontrol ediliyor...", token)
-
+				fmt.Println("cookie", c.Cookies("Session"))
 				if token == "" {
 					token = c.Get("Session")
-
+					if token == "" {
+						token = c.Cookies("Session")
+					}
 				}
 				if token == "" {
 					fmt.Println("WebSocket token veya Authorization header bulunamadı")
@@ -43,13 +45,11 @@ func AuthGuard() fiber.Handler {
 					return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 				}
 			}
-			
 
 			req, err := http.NewRequest("GET", "http://localhost:8081/validate-token", nil)
 			if err != nil {
 				return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal server error"})
 			}
-			
 
 			req.AddCookie(&http.Cookie{Name: "Session", Value: token})
 
@@ -58,7 +58,6 @@ func AuthGuard() fiber.Handler {
 			if err != nil {
 				return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"error": "auth service is unavailable"})
 			}
-	
 
 			defer resp.Body.Close()
 
@@ -66,7 +65,6 @@ func AuthGuard() fiber.Handler {
 				body, _ := ioutil.ReadAll(resp.Body)
 				return c.Status(resp.StatusCode).Send(body)
 			}
-			
 
 			body, err := ioutil.ReadAll(resp.Body)
 			if err != nil {

@@ -50,6 +50,7 @@ func (h *WebSocketRoomHandler) HandleWS(c *websocket.Conn, ctx context.Context, 
 	}
 
 	roomID, err := uuid.Parse(c.Params("room_id"))
+	fmt.Println("Room ID:", roomID)
 	if err != nil {
 		h.sendErrorAndClose(c, fmt.Sprintf("Failed to parse room ID: %v", err), fiber.StatusBadRequest)
 		return

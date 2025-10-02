@@ -2,6 +2,7 @@
 package hub
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -72,12 +73,22 @@ func (dge *DrawingGameEngine) ProcessMove(game *Game, playerID uuid.UUID, moveDa
 		if game.ActivePlayer != playerID {
 			return fmt.Errorf("it is not your turn to draw")
 		}
+		fmt.Println("data:", data)
 		// Canvas verisini güncelle
-		if canvasData, ok := data["canvas"].(string); ok {
-			drawingData, _ := game.ModeData.(*DrawingGameData)
-			drawingData.CanvasData = canvasData
-			log.Printf("Drawing updated for room %s by player %s", game.RoomID, playerID)
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			return fmt.Errorf("failed to marshal drawing data: %v", err)
 		}
+		drawingData, _ := game.ModeData.(*DrawingGameData)
+		drawingData.CanvasData = string(jsonData)
+		log.Printf("Drawing updated for room %s by player %s", game.RoomID, playerID)
+		dge.gameHub.hub.BroadcastToOthers(game.RoomID, playerID, &Message{
+			Type: "canvas_update",
+			Content: map[string]interface{}{
+				"drawer_id": playerID,
+				"data":      drawingData.CanvasData,
+			},
+		})
 	case "guess":
 		// Herkes tahmin edebilir
 		guessText, ok := data["text"].(string)
@@ -128,10 +139,10 @@ func (dge *DrawingGameEngine) ProcessMove(game *Game, playerID uuid.UUID, moveDa
 	}
 
 	// Oyun durumu güncellendi, bu durumu yayınlaması için GameHub'ı bilgilendir
-	dge.gameHub.hub.BroadcastMessage(game.RoomID, &Message{
-		Type:    "game_state_update",
-		Content: game,
-	})
+	// dge.gameHub.hub.BroadcastMessage(game.RoomID, &Message{
+	// 	Type:    "game_state_update",
+	// 	Content: game,
+	// })
 
 	return nil
 }

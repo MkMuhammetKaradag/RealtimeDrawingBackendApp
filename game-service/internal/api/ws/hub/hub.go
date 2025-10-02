@@ -484,6 +484,43 @@ func (h *Hub) BroadcastMessage(roomID uuid.UUID, msg *Message) {
 		}
 	}
 }
+func (h *Hub) BroadcastToOthers(roomID uuid.UUID, senderID uuid.UUID, msg *Message) {
+	// Okuma kilidi al
+	h.mutex.RLock()
+	defer h.mutex.RUnlock()
+
+	// Odayı bul
+	roomClients, ok := h.roomsClients[roomID]
+	if !ok {
+		log.Printf("Room %s not found for targeted broadcast.", roomID)
+		return
+	}
+
+	// JSON mesajını doğru şekilde oluştur
+	messageBytes, err := json.Marshal(msg)
+	if err != nil {
+		log.Printf("Failed to marshal message for broadcast to others: %v", err)
+		return
+	}
+
+	// Odadaki tüm istemciler üzerinde döngü yap
+	for _, client := range roomClients {
+		// 💡 KENDİNDEN BAŞKA HERKESE GÖNDERME KONTROLÜ
+		if client.ID == senderID {
+			// Mesajı gönderen istemciyi atla (kendine gönderme)
+			continue
+		}
+
+		select {
+		case client.Send <- messageBytes:
+			// Mesaj başarıyla gönderildi
+		default:
+			// İstemcinin kanalı doluysa mesajı düşür ve logla
+			log.Printf("Client %s's send channel is full, dropping message (sent by %s).", client.ID, senderID)
+			// İPUCU: Kritik mesajlar için burada istemcinin bağlantısını kesmeyi düşünebilirsiniz.
+		}
+	}
+}
 
 func (h *Hub) GetRoomClientCount(roomID uuid.UUID) int {
 
