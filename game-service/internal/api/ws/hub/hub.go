@@ -316,7 +316,7 @@ func (h *Hub) readPump(client *domain.Client) {
 		}
 
 		switch msg.Type {
-		case "get_room_setting": // Düzeltme: "seeting" yerine "setting"
+		case "get_room_setting":
 			// Odanın ayarlarını al
 			settings := h.GetRoomSettings(client.RoomID)
 
@@ -338,7 +338,6 @@ func (h *Hub) readPump(client *domain.Client) {
 			}
 
 		case "game_started":
-			// Mesajın içeriğini güncellemeniz gerekiyorsa yapın
 
 			h.inboundMessages <- struct {
 				RoomID uuid.UUID
@@ -362,7 +361,35 @@ func (h *Hub) readPump(client *domain.Client) {
 				Msg:    msg,
 			}
 
+		case "game_settings_update":
+			// 💡 PlayerID'yi ekleyin
+			if contentMap, ok := msg.Content.(map[string]interface{}); ok {
+				contentMap["player_id"] = client.ID.String()
+			}
+
+			h.inboundMessages <- struct {
+				RoomID uuid.UUID
+				Msg    RoomManagerData
+			}{
+				RoomID: client.RoomID,
+				Msg:    msg,
+			}
+		case "canvas_action":
+			// 💡 PlayerID'yi ekleyin
+			if contentMap, ok := msg.Content.(map[string]interface{}); ok {
+				contentMap["player_id"] = client.ID.String()
+			}
+
+			h.inboundMessages <- struct {
+				RoomID uuid.UUID
+				Msg    RoomManagerData
+			}{
+				RoomID: client.RoomID,
+				Msg:    msg,
+			}
+
 		}
+
 		// Mesaj işleme mantığı buraya gelecek.
 		// Örneğin: h.handleMessage(msg, client)
 	}

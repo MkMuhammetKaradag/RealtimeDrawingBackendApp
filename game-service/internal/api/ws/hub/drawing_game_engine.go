@@ -68,7 +68,7 @@ func (dge *DrawingGameEngine) ProcessMove(game *Game, playerID uuid.UUID, moveDa
 	}
 
 	switch actionType {
-	case "draw":
+	case "draw", "canvas_action":
 		// Sadece sırası gelen oyuncu çizebilir
 		if game.ActivePlayer != playerID {
 			return fmt.Errorf("it is not your turn to draw")

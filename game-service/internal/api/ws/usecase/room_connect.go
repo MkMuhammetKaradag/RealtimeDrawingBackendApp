@@ -38,7 +38,7 @@ func (u *roomManagerUseCase) Execute(c *websocket.Conn, ctx context.Context, roo
 	}
 
 	// 1. Oda üyeliği kontrolü
-	isMember, err := u.repository.IsMemberRoom(ctx, roomID, currentUserID)
+	isMember, isHost, err := u.repository.IsMemberAndHostRoom(ctx, roomID, currentUserID)
 	if err != nil || !isMember {
 		errMsg := fmt.Sprintf("Authorization error: %v", err)
 		sendErrorToClient(c, errMsg)
@@ -65,7 +65,7 @@ func (u *roomManagerUseCase) Execute(c *websocket.Conn, ctx context.Context, roo
 
 		// ✅ Oyuncu zaten oyundaysa, yeniden bağlanmasına izin ver (reconnect durumu)
 		fmt.Printf("Player %s reconnecting to active game in room %s\n", currentUserID, roomID)
-		u.sendGameStateOnConnect(c, game)
+		u.sendGameStateOnConnect(c, isHost, game)
 		u.hub.BroadcastMessage(roomID, &hub.Message{
 			Type: "player_reconnected",
 			Content: map[string]interface{}{
@@ -76,7 +76,7 @@ func (u *roomManagerUseCase) Execute(c *websocket.Conn, ctx context.Context, roo
 		})
 	} else {
 		// Oyun aktif değil, bekleme durumunu gönder
-		u.sendWaitingStateOnConnect(c, roomID)
+		u.sendWaitingStateOnConnect(c, roomID, isHost)
 	}
 
 	// 3. Client'ı Hub'a Kaydet
@@ -99,23 +99,21 @@ func (u *roomManagerUseCase) isPlayerInGame(game *hub.Game, userID uuid.UUID) bo
 	}
 	return false
 }
-func (u *roomManagerUseCase) sendGameStateOnConnect(conn *websocket.Conn, game *hub.Game) {
-	// Game nesnesini JSON'a dönüştürerek sadece bu yeni bağlanan istemciye gönder.
-	// Bu, istemciye oyunun başladığını ve mevcut durumunu bildirir.
+func (u *roomManagerUseCase) sendGameStateOnConnect(conn *websocket.Conn, isHost bool, game *hub.Game) {
 
 	// Örnek: Basit bir mesaj tipi gönderelim
 	type GameStatusMessage struct {
 		Type     string    `json:"type"`
 		State    string    `json:"state"`
+		IsHost   bool      `json:"is_host"`
 		GameData *hub.Game `json:"game_data,omitempty"`
 	}
-
-	// Güvenlik: ModeData'daki gizli bilgileri (örneğin DrawingGameData'daki CurrentWord) temizlemeyi unutmayın!
 
 	msg := GameStatusMessage{
 		Type:     "game_status",
 		State:    game.State,
-		GameData: game, // Bu kısımda hassas verileri temizlemek önemlidir.
+		IsHost:   isHost,
+		GameData: game,
 	}
 
 	if err := conn.WriteJSON(msg); err != nil {
@@ -123,17 +121,19 @@ func (u *roomManagerUseCase) sendGameStateOnConnect(conn *websocket.Conn, game *
 	}
 }
 
-func (u *roomManagerUseCase) sendWaitingStateOnConnect(conn *websocket.Conn, roomID uuid.UUID) {
+func (u *roomManagerUseCase) sendWaitingStateOnConnect(conn *websocket.Conn, roomID uuid.UUID, isHost bool) {
 	// Oyunun bekleme (waiting) durumunda olduğunu bildiren mesaj.
 	type WaitingMessage struct {
 		Type    string    `json:"type"`
 		RoomID  uuid.UUID `json:"room_id"`
+		IsHost  bool      `json:"is_host"`
 		Message string    `json:"message"`
 	}
 
 	msg := WaitingMessage{
 		Type:    "room_status",
 		RoomID:  roomID,
+		IsHost:  isHost,
 		Message: "Oda hazır, diğer oyuncular bekleniyor.",
 	}
 

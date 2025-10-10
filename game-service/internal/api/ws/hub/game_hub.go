@@ -602,6 +602,8 @@ func (g *GameHub) HandleGameMessage(roomID uuid.UUID, msg RoomManagerData) {
 		g.handleGameStarted(roomID, msg)
 	case "player_move":
 		g.handlePlayerMove(roomID, msg)
+	case "canvas_action":
+		g.handlePlayerMove(roomID, msg)
 
 	default:
 		fmt.Printf("GameHub: Bilinmeyen mesaj tipi: %s\n", msg.Type)
@@ -674,6 +676,7 @@ func (g *GameHub) handleGameSettingsUpdate(roomID uuid.UUID, msg RoomManagerData
 		// Varsayılan ayarları oluştur
 		settings = &GameSettings{
 			ModeName:            "Çizim ve Tahmin", // default
+			ModeID:              "1",
 			TotalRounds:         2,
 			RoundDuration:       60,
 			PreparationDuration: 5, // 🎯 Varsayılan 5 saniye
@@ -702,8 +705,12 @@ func (g *GameHub) handleGameSettingsUpdate(roomID uuid.UUID, msg RoomManagerData
 	response := &Message{
 		Type: "game_settings_updated",
 		Content: map[string]interface{}{
-			"room_id":  roomID,
-			"settings": settings,
+			"max_players":    settings.MaxPlayers,
+			"min_players":    settings.MinPlayers,
+			"mod_id":         settings.ModeID,
+			"mode_name":      settings.ModeName,
+			"total_rounds":   settings.TotalRounds,
+			"round_duration": settings.RoundDuration,
 		},
 	}
 

@@ -14,7 +14,7 @@ type ChannelWebSocketListenUseCase interface {
 }
 
 type PostgresRepository interface {
-	IsMemberRoom(ctx context.Context, roomID, userID uuid.UUID) (bool, error)
+	IsMemberAndHostRoom(ctx context.Context, roomID, userID uuid.UUID) (bool, bool, error)
 }
 type Hub interface {
 	Run(ctx context.Context)
