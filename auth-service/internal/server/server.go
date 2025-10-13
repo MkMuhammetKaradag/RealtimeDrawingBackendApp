@@ -28,7 +28,7 @@ func NewFiberApp(cfg Config) *fiber.App {
 		// Bu, * yerine geçen ve kimlik bilgilerini göndermeye izin veren adrestir.
 		AllowOrigins:     "http://localhost:5173",
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
-		AllowMethods:     "GET,POST,PUT,DELETE,OPTIONS",
+		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 		AllowCredentials: true,
 	}))
 	app.Use(requestid.New())

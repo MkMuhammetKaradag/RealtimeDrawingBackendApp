@@ -651,9 +651,8 @@ func (g *GameHub) handleGameModeChange(roomID uuid.UUID, msg RoomManagerData) {
 	response := &Message{
 		Type: "game_mode_changed",
 		Content: map[string]interface{}{
-			"room_id":  roomID,
-			"mode_id":  modeID,
-			"settings": settings,
+			"room_id":      roomID,
+			"game_mode_id": modeID,
 		},
 	}
 
@@ -707,7 +706,7 @@ func (g *GameHub) handleGameSettingsUpdate(roomID uuid.UUID, msg RoomManagerData
 		Content: map[string]interface{}{
 			"max_players":    settings.MaxPlayers,
 			"min_players":    settings.MinPlayers,
-			"mod_id":         settings.ModeID,
+			"game_mode_id":   settings.ModeID,
 			"mode_name":      settings.ModeName,
 			"total_rounds":   settings.TotalRounds,
 			"round_duration": settings.RoundDuration,

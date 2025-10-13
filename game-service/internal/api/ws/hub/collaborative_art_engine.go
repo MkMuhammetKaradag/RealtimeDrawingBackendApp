@@ -1,6 +1,7 @@
 package hub
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
 	"math/rand"
@@ -23,6 +24,8 @@ type CollaborativeArtData struct {
 	// Tüm turların verisini saklayacak, Raporlama için anahtar yapı
 	RoundHistory   map[int][]DrawingStroke // Tur Numarası -> O turdaki TÜM vuruşlar
 	CurrentStrokes []DrawingStroke         // Mevcut turda yapılan vuruşlar
+
+	
 }
 
 // CollaborativeArtEngine, "Ortak Sanat Projesi" oyununun mantığını uygular.
@@ -77,28 +80,33 @@ func (cae *CollaborativeArtEngine) ProcessMove(game *Game, playerID uuid.UUID, m
 	}
 
 	actionType, ok := data["type"].(string)
-	if !ok || actionType != "draw_stroke" {
-		return fmt.Errorf("invalid move type or missing 'type' field")
+	if !ok {
+		return fmt.Errorf("move data missing 'type' field")
 	}
 
 	// 🔑 ANA DEĞİŞİKLİK: Çizim vuruşunu oyuncu ID'si ile birlikte sakla
-	if strokeData, ok := data["stroke"].(string); ok {
+	if actionType == "canvas_action" || actionType == "draw" {
+
+		jsonData, err := json.Marshal(data)
+		if err != nil {
+			return fmt.Errorf("failed to marshal drawing data: %v", err)
+		}
+
 		artData, _ := game.ModeData.(*CollaborativeArtData)
 
 		newStroke := DrawingStroke{
 			PlayerID: playerID,
-			Data:     strokeData,
+			Data:     string(jsonData),
 		}
 		// Vuruşu mevcut tur listesine ekle
 		artData.CurrentStrokes = append(artData.CurrentStrokes, newStroke)
 
-		log.Printf("Stroke added for room %s by player %s. Total strokes: %d",
-			game.RoomID, playerID, len(artData.CurrentStrokes))
-
-		// Yeni vuruşu anında tüm oyunculara yayınla
-		cae.gameHub.hub.BroadcastMessage(game.RoomID, &Message{
-			Type:    "new_stroke", // Hafif mesaj tipi
-			Content: newStroke,    // Çizim vuruşu objesini gönder
+		cae.gameHub.hub.BroadcastToOthers(game.RoomID, playerID, &Message{
+			Type: "canvas_update",
+			Content: map[string]interface{}{
+				"drawer_id": playerID,
+				"data":      newStroke.Data,
+			},
 		})
 	}
 
@@ -129,7 +137,7 @@ func (cae *CollaborativeArtEngine) EndRound(game *Game, reason string) bool {
 	if game.TurnCount > game.TotalRounds {
 		game.State = GameStateOver
 		// Oyun sonu raporunu yayınla (Yeni metot)
-		cae.SendFinalArtReport(game)
+		// cae.SendFinalArtReport(game)
 		return false // Oyun Bitti
 	}
 
@@ -238,21 +246,20 @@ func (cae *CollaborativeArtEngine) StartRound(game *Game) error {
 	// 3. Tüm oyunculara tur başlangıcını (gizli kelime ile) bildir
 	for _, p := range game.Players {
 		cae.gameHub.hub.SendMessageToUser(game.RoomID, p.UserID, &Message{
-			Type: "round_start_collab",
+			Type: "round_start_drawer",
 			Content: map[string]interface{}{
-				"word_length": len(artData.CurrentWord), // Kelime uzunluğunu gönder
-				"duration":    game.RoundDuration,
-				"round":       game.TurnCount,
-				"message":     "Yeni tur başladı! Şimdi çizim yapma sırası.",
+				"drawer_id": p.UserID,
+				"word":      artData.CurrentWord,
+				"duration":  game.RoundDuration,
 			},
 		})
 	}
 
 	// 4. Genel oyun durumu yayınını yap (tur bilgisinin güncellenmesi için)
-	cae.gameHub.hub.BroadcastMessage(game.RoomID, &Message{
-		Type:    "game_state_update",
-		Content: game,
-	})
+	// cae.gameHub.hub.BroadcastMessage(game.RoomID, &Message{
+	// 	Type:    "game_state_update",
+	// 	Content: game,
+	// })
 
 	return nil
 }
