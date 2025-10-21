@@ -6,6 +6,7 @@ import (
 	"gateway-service/internal/middleware"
 	"gateway-service/internal/routes"
 	"gateway-service/utils"
+	"log"
 
 	"github.com/gofiber/fiber/v2"
 	"github.com/gofiber/fiber/v2/middleware/cors"
@@ -38,12 +39,10 @@ func (gs *GatewayServer) Start(port string) error {
 	// Global middleware'leri ekle
 
 	app.Use(cors.New(cors.Config{
-		// Frontend'inin tam adresini buraya yaz.
-		// Bu, * yerine geçen ve kimlik bilgilerini göndermeye izin veren adrestir.
 		AllowOrigins:     "http://localhost:5173",
-		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
-		AllowMethods:     "GET,POST,PUT,DELETE,PATCH,OPTIONS",
-		AllowCredentials: true,
+		AllowHeaders:     "Origin, Content-Type, Accept, Authorization, X-Requested-With",
+		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+		AllowCredentials: true, // 👈 Bu önemli
 	}))
 	app.Use(requestid.New())
 	app.Use(logger.New())  // Loglama middleware'i
@@ -52,7 +51,13 @@ func (gs *GatewayServer) Start(port string) error {
 	// routes.RegisterHTTPRoutes(app, gs.rateLimiter)
 	routes.RegisterRoutes(app, gs.rateLimiter)
 	routes.RegisterWebSocketRoutes(app, gs.rateLimiter)
+	// Sağlık kontrolü route'u
 
+	// Debug middleware
+	app.Use(func(c *fiber.Ctx) error {
+		log.Printf("📨 %s %s - Origin: %s", c.Method(), c.Path(), c.Get("Origin"))
+		return c.Next()
+	})
 	// Ana sayfa route'u
 	app.Get("/", func(c *fiber.Ctx) error {
 		return c.SendString("API Gateway çalışıyor!")
@@ -62,7 +67,14 @@ func (gs *GatewayServer) Start(port string) error {
 	app.Get("/health", func(c *fiber.Ctx) error {
 		return c.JSON(fiber.Map{"status": "UP"})
 	})
-
+	app.Get("/debug", func(c *fiber.Ctx) error {
+		return c.JSON(fiber.Map{
+			"message":   "Backend çalışıyor!",
+			"client_ip": c.IP(),
+			"origin":    c.Get("Origin"),
+			"headers":   c.GetReqHeaders(),
+		})
+	})
 	// 404 handler - bulunamayan route'lar için
 	app.Use(func(c *fiber.Ctx) error {
 		return c.Status(404).JSON(fiber.Map{"error": "Route not found"})

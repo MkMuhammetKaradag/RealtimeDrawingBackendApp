@@ -550,6 +550,7 @@ func (g *GameHub) handleRoundEnd(roomID uuid.UUID, reason string) {
 
 		gameOverContent := make(map[string]interface{})
 		gameOverContent["scores"] = game.Players // Skorları her zaman göndermek kötü değil.
+		gameOverContent["data"] = game.ModeData
 
 		// 🎯 KRİTİK DEĞİŞİKLİK: Sadece DrawingGameEngine gibi puanlamalı modlar için kazananı belirle.
 		if game.ModeID == "1" {
@@ -558,6 +559,7 @@ func (g *GameHub) handleRoundEnd(roomID uuid.UUID, reason string) {
 			dge, ok := engine.(*DrawingGameEngine)
 			if ok {
 				gameOverContent["winner"] = dge.determineWinner(game)
+				dge.SendFinalArtReport(game)
 			}
 		} else if game.ModeID == "2" {
 			// CollaborativeArtEngine'e özel bir "Oyun Bitti" aksiyonu varsa çağır.
@@ -577,10 +579,10 @@ func (g *GameHub) handleRoundEnd(roomID uuid.UUID, reason string) {
 		}
 
 		// Oyun Bitti mesajını yayınla.
-		g.hub.BroadcastMessage(game.RoomID, &Message{
-			Type:    "game_over",
-			Content: gameOverContent,
-		})
+		// g.hub.BroadcastMessage(game.RoomID, &Message{
+		// 	Type:    "game_over",
+		// 	Content: gameOverContent,
+		// })
 
 		// Aktif oyunlardan kaldır.
 		delete(g.activeGames, roomID)

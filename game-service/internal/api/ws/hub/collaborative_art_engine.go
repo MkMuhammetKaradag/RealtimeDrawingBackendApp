@@ -25,7 +25,6 @@ type CollaborativeArtData struct {
 	RoundHistory   map[int][]DrawingStroke // Tur Numarası -> O turdaki TÜM vuruşlar
 	CurrentStrokes []DrawingStroke         // Mevcut turda yapılan vuruşlar
 
-	
 }
 
 // CollaborativeArtEngine, "Ortak Sanat Projesi" oyununun mantığını uygular.
@@ -171,18 +170,18 @@ func (cae *CollaborativeArtEngine) SendFinalArtReport(game *Game) {
 		// Bu turdaki kelimeyi tahmin edebilmek için ek bir map tutulmalı
 		// Şu anki yapımızda CurrentWord'ü sadece StartRound'da belirliyoruz.
 		// Tur kelimesini de RoundHistory'e dahil etmeliyiz, ama şimdilik varsayalım:
-		word := cae.selectRandomWord() // Gerçekte tur kelimesini bir yerde saklamanız GEREKİR.
+		// word := cae.selectRandomWord() // Gerçekte tur kelimesini bir yerde saklamanız GEREKİR.
 
-		// Oyuncu ID'sine göre vuruşları grupla
-		playerStrokes := make(map[uuid.UUID][]DrawingStroke)
-		for _, stroke := range allStrokes {
-			playerStrokes[stroke.PlayerID] = append(playerStrokes[stroke.PlayerID], stroke)
-		}
+		// // Oyuncu ID'sine göre vuruşları grupla
+		// playerStrokes := make(map[uuid.UUID][]DrawingStroke)
+		// for _, stroke := range allStrokes {
+		// 	playerStrokes[stroke.PlayerID] = append(playerStrokes[stroke.PlayerID], stroke)
+		// }
 
 		// Rapor objesini hazırla
 		roundReport := map[string]interface{}{
-			"word":                 word,
-			"player_contributions": playerStrokes,
+			"word":    artData.CurrentWord,
+			"actions": allStrokes,
 		}
 
 		finalReport[fmt.Sprintf("round_%d", roundNum)] = roundReport
@@ -190,8 +189,10 @@ func (cae *CollaborativeArtEngine) SendFinalArtReport(game *Game) {
 
 	// Oyun sonu raporunu yayınla
 	cae.gameHub.hub.BroadcastMessage(game.RoomID, &Message{
-		Type:    "game_over_report",
-		Content: finalReport,
+		Type: "game_over",
+		Content: map[string]interface{}{
+			"rounds": finalReport,
+		},
 	})
 
 	log.Printf("Final art report published for room %s.", game.RoomID)

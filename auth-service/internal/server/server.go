@@ -26,7 +26,7 @@ func NewFiberApp(cfg Config) *fiber.App {
 	app.Use(cors.New(cors.Config{
 		// Frontend'inin tam adresini buraya yaz.
 		// Bu, * yerine geçen ve kimlik bilgilerini göndermeye izin veren adrestir.
-		AllowOrigins:     "http://localhost:5173",
+		AllowOrigins:     "http://localhost:5173, http://192.168.1.224:5173,http://172.17.80.1:5173,http://172.21.192.1:5173",
 		AllowHeaders:     "Origin, Content-Type, Accept, Authorization",
 		AllowMethods:     "GET,POST,PUT,PATCH,DELETE,OPTIONS",
 		AllowCredentials: true,

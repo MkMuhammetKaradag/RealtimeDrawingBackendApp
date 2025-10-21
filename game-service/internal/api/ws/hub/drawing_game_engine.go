@@ -15,6 +15,13 @@ type DrawingGameEngine struct {
 	gameHub *GameHub
 }
 
+type DrawArtData struct {
+	CurrentWord    string                  // Çizilen kelime (temamız)
+	RoundHistory   map[int][]DrawingStroke // Tur Numarası -> O turdaki TÜM vuruşlar
+	CurrentStrokes []DrawingStroke         // Mevcut turda yapılan vuruşlar
+
+}
+
 func NewDrawingGameEngine(gameHub *GameHub) *DrawingGameEngine {
 	return &DrawingGameEngine{gameHub: gameHub}
 }
@@ -34,13 +41,12 @@ func (dge *DrawingGameEngine) InitGame(game *Game, players []*Player) error {
 	}
 
 	// Bu modun özel verilerini oluştur
-	drawingData := &DrawingGameData{
-		CurrentWord:    "", // Kelimeyi daha sonra belirleyeceğiz
-		CurrentDrawer:  game.ActivePlayer,
-		GuessedPlayers: make(map[uuid.UUID]bool),
-		CanvasData:     "{}", // Boş başlangıç canvas'ı
+	artData := &DrawArtData{
+		CurrentWord:    "",
+		RoundHistory:   make(map[int][]DrawingStroke), // Geçmişi saklamak için map oluştur
+		CurrentStrokes: []DrawingStroke{},
 	}
-	game.ModeData = drawingData
+	game.ModeData = artData
 
 	log.Printf("Initialized Drawing & Guessing game for room %s. First drawer: %s", game.RoomID, game.ActivePlayer)
 	return nil
@@ -79,14 +85,17 @@ func (dge *DrawingGameEngine) ProcessMove(game *Game, playerID uuid.UUID, moveDa
 		if err != nil {
 			return fmt.Errorf("failed to marshal drawing data: %v", err)
 		}
-		drawingData, _ := game.ModeData.(*DrawingGameData)
-		drawingData.CanvasData = string(jsonData)
+		drawingData, _ := game.ModeData.(*DrawArtData)
+		drawingData.CurrentStrokes = append(drawingData.CurrentStrokes, DrawingStroke{
+			PlayerID: playerID,
+			Data:     string(jsonData),
+		})
 		log.Printf("Drawing updated for room %s by player %s", game.RoomID, playerID)
 		dge.gameHub.hub.BroadcastToOthers(game.RoomID, playerID, &Message{
 			Type: "canvas_update",
 			Content: map[string]interface{}{
 				"drawer_id": playerID,
-				"data":      drawingData.CanvasData,
+				"data":      drawingData.CurrentStrokes[len(drawingData.CurrentStrokes)-1].Data,
 			},
 		})
 	case "guess":
@@ -167,14 +176,13 @@ func (dge *DrawingGameEngine) StartRound(game *Game) error {
 	// game.ActivePlayer = dge.getNextDrawer(game) // Gerçek uygulamada bu gerekecek
 
 	// 2. Tur verilerini sıfırla/hazırla
-	drawingData, _ := game.ModeData.(*DrawingGameData)
-	drawingData.CurrentDrawer = game.ActivePlayer
-	drawingData.GuessedPlayers = make(map[uuid.UUID]bool)
-	drawingData.CanvasData = "{}"
-	fmt.Println("Current drawer is:", drawingData.CurrentDrawer)
+	drawingData, ok := game.ModeData.(*DrawArtData)
+	if !ok {
+		return fmt.Errorf("mode data is not of expected type CollaborativeArtData")
+	}
 	// 💡 Kelime seçimi burada yapılır: drawingData.CurrentWord = dge.selectRandomWord()
-	drawingData.CurrentWord = dge.selectRandomWord()                  // Örnek olarak
-	fmt.Println("Selected word for drawer:", drawingData.CurrentWord) // Konsola yazdır
+	drawingData.CurrentWord = dge.selectRandomWord() // Örnek olarak
+	drawingData.CurrentStrokes = []DrawingStroke{}   // Çizimleri sıfırla
 
 	// 3. Bildirimleri Gönder
 	for _, p := range game.Players {
@@ -233,13 +241,15 @@ func (dge *DrawingGameEngine) EndRound(game *Game, reason string) bool {
 	// defer game.Mutex.Unlock()
 	// 1. Puanlama ve Durum Güncellemeleri buraya gelir.
 	// Örn: dge.calculateScores(game, reason)
+	artData, _ := game.ModeData.(*DrawArtData)
 
+	artData.RoundHistory[game.TurnCount] = artData.CurrentStrokes
 	// 2. Tur Sayısını Artırma
 	game.TurnCount++
 
 	// 3. Sıradaki Çizeri Ayarlama
 	game.ActivePlayer = dge.getNextDrawer(game) // sonraki çizeri belirle
-
+	artData.CurrentStrokes = []DrawingStroke{}
 	// 4. OYUN BİTİŞ KONTROLÜ
 	if game.TurnCount > game.TotalRounds {
 		game.State = GameStateOver
@@ -338,4 +348,44 @@ func (dge *DrawingGameEngine) SendPreparationNotifications(game *Game) {
 
 	log.Printf("Preparation notifications sent for room %s. Next drawer: %s, Duration: %ds",
 		game.RoomID, nextDrawer, game.PreparationDuration)
+}
+func (dge *DrawingGameEngine) SendFinalArtReport(game *Game) {
+	artData, _ := game.ModeData.(*DrawArtData)
+
+	// Nihai rapor yapısı:
+	// { "round_1": { "word": "Kedi", "player_id_1": [stroke1, stroke2, ...], ... }, ... }
+	finalReport := make(map[string]interface{})
+
+	// Geçmişteki her tur için döngü
+	for roundNum, allStrokes := range artData.RoundHistory {
+
+		// Bu turdaki kelimeyi tahmin edebilmek için ek bir map tutulmalı
+		// Şu anki yapımızda CurrentWord'ü sadece StartRound'da belirliyoruz.
+		// Tur kelimesini de RoundHistory'e dahil etmeliyiz, ama şimdilik varsayalım:
+		//word := dge.selectRandomWord() // Gerçekte tur kelimesini bir yerde saklamanız GEREKİR.
+
+		// // Oyuncu ID'sine göre vuruşları grupla
+		// playerStrokes := make(map[uuid.UUID][]DrawingStroke)
+		// for _, stroke := range allStrokes {
+		// 	playerStrokes[stroke.PlayerID] = append(playerStrokes[stroke.PlayerID], stroke)
+		// }
+
+		// Rapor objesini hazırla
+		roundReport := map[string]interface{}{
+			"word":    artData.CurrentWord,
+			"actions": allStrokes,
+		}
+
+		finalReport[fmt.Sprintf("round_%d", roundNum)] = roundReport
+	}
+
+	// Oyun sonu raporunu yayınla
+	dge.gameHub.hub.BroadcastMessage(game.RoomID, &Message{
+		Type: "game_over",
+		Content: map[string]interface{}{
+			"rounds": finalReport,
+		},
+	})
+
+	log.Printf("Final art report published for room %s.", game.RoomID)
 }
