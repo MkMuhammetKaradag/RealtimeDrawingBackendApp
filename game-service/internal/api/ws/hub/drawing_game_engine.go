@@ -16,10 +16,15 @@ type DrawingGameEngine struct {
 }
 
 type DrawArtData struct {
-	CurrentWord    string                  // Çizilen kelime (temamız)
-	RoundHistory   map[int][]DrawingStroke // Tur Numarası -> O turdaki TÜM vuruşlar
-	CurrentStrokes []DrawingStroke         // Mevcut turda yapılan vuruşlar
-
+	CurrentWord    string              // Çizilen kelime (temamız)
+	RoundHistory   map[int]RoundRecord // Tur Numarası -> O turdaki TÜM vuruşlar
+	CurrentStrokes []DrawingStroke     // Mevcut turda yapılan vuruşlar
+	GuessedPlayers map[uuid.UUID]bool
+}
+type RoundRecord struct {
+	Word       string
+	DrawerID   uuid.UUID       // Bu turda kimin çizdiği
+	AllStrokes []DrawingStroke // Bu turdaki tüm vuruşlar (zaten saklıyor olabilirsiniz)
 }
 
 func NewDrawingGameEngine(gameHub *GameHub) *DrawingGameEngine {
@@ -43,8 +48,9 @@ func (dge *DrawingGameEngine) InitGame(game *Game, players []*Player) error {
 	// Bu modun özel verilerini oluştur
 	artData := &DrawArtData{
 		CurrentWord:    "",
-		RoundHistory:   make(map[int][]DrawingStroke), // Geçmişi saklamak için map oluştur
+		RoundHistory:   make(map[int]RoundRecord), // Geçmişi saklamak için map oluştur
 		CurrentStrokes: []DrawingStroke{},
+		GuessedPlayers: make(map[uuid.UUID]bool),
 	}
 	game.ModeData = artData
 
@@ -86,6 +92,10 @@ func (dge *DrawingGameEngine) ProcessMove(game *Game, playerID uuid.UUID, moveDa
 			return fmt.Errorf("failed to marshal drawing data: %v", err)
 		}
 		drawingData, _ := game.ModeData.(*DrawArtData)
+		if !ok || drawingData == nil {
+			// Loglama eklemek isteyebilirsiniz: log.Printf("HATA: ModeData DrawArtData değil veya nil.")
+			return fmt.Errorf("oyun modu verisi eksik veya yanlış tipte")
+		}
 		drawingData.CurrentStrokes = append(drawingData.CurrentStrokes, DrawingStroke{
 			PlayerID: playerID,
 			Data:     string(jsonData),
@@ -104,11 +114,14 @@ func (dge *DrawingGameEngine) ProcessMove(game *Game, playerID uuid.UUID, moveDa
 		if !ok {
 			return fmt.Errorf("guess data missing 'text' field")
 		}
-
-		drawingData, _ := game.ModeData.(*DrawingGameData)
+		fmt.Println("Received guess:", guessText, "from player:", playerID, "in room mode datra:", game.ModeData)
+		drawingData, _ := game.ModeData.(*DrawArtData)
+		if !ok || drawingData == nil {
+			return fmt.Errorf("oyun modu verisi eksik veya yanlış tipte")
+		}
 
 		// Tahmin çizerin kendisinden geldiyse (çizer çizdiği kelimeyi tahmin edemez)
-		if playerID == drawingData.CurrentDrawer {
+		if playerID == game.ActivePlayer {
 			// Çizici, tahmin göndermiş. Bunu bir hata olarak ele alabilir veya yok sayabilirsiniz.
 			return fmt.Errorf("drawer cannot guess the word")
 		}
@@ -131,7 +144,7 @@ func (dge *DrawingGameEngine) ProcessMove(game *Game, playerID uuid.UUID, moveDa
 					if p.UserID == playerID {
 						// Tahminci puanı
 						p.Score += guesserScore
-					} else if p.UserID == drawingData.CurrentDrawer {
+					} else if p.UserID == game.ActivePlayer {
 						// Çizer puanı (Her doğru tahminde bir kez alır)
 						p.Score += drawerScorePerGuess
 					}
@@ -159,7 +172,7 @@ func (dge *DrawingGameEngine) ProcessMove(game *Game, playerID uuid.UUID, moveDa
 // CheckRoundStatus, turun bitip bitmediğini kontrol eder.
 func (dge *DrawingGameEngine) CheckRoundStatus(game *Game) (bool, error) {
 	// Tüm oyuncular doğru tahmin ettiyse veya süre bittiyse true döner.
-	drawingData, _ := game.ModeData.(*DrawingGameData)
+	drawingData, _ := game.ModeData.(*DrawArtData)
 	return len(drawingData.GuessedPlayers) == len(game.Players)-1, nil
 }
 
@@ -181,9 +194,19 @@ func (dge *DrawingGameEngine) StartRound(game *Game) error {
 		return fmt.Errorf("mode data is not of expected type CollaborativeArtData")
 	}
 	// 💡 Kelime seçimi burada yapılır: drawingData.CurrentWord = dge.selectRandomWord()
-	drawingData.CurrentWord = dge.selectRandomWord() // Örnek olarak
-	drawingData.CurrentStrokes = []DrawingStroke{}   // Çizimleri sıfırla
-
+	selectedWord := dge.selectRandomWord()
+	drawingData.CurrentWord = selectedWord         // Örnek olarak
+	drawingData.CurrentStrokes = []DrawingStroke{} // Çizimleri sıfırla
+	drawingData.GuessedPlayers = make(map[uuid.UUID]bool)
+	currentRoundNum := game.TurnCount
+	drawingData.RoundHistory[currentRoundNum] = RoundRecord{
+		Word: selectedWord,
+		// ActivePlayer'ın doğru ayarlandığından emin olun!
+		// game.ActivePlayer, bu turu çizecek kişinin ID'si olmalı.
+		DrawerID: game.ActivePlayer,
+		// AllStrokes şimdilik boş kalabilir, Stroke'lar EndRound'da eklenecektir.
+		AllStrokes: []DrawingStroke{},
+	}
 	// 3. Bildirimleri Gönder
 	for _, p := range game.Players {
 		// Çizer (Drawer) için özel mesaj
@@ -192,7 +215,7 @@ func (dge *DrawingGameEngine) StartRound(game *Game) error {
 				Type: "round_start_drawer",
 				Content: map[string]interface{}{
 					"drawer_id": game.ActivePlayer,
-					"word":      drawingData.CurrentWord, // 💡 KELİMEYİ SADECE ÇİZERE GÖNDER
+					"word":      selectedWord, // 💡 KELİMEYİ SADECE ÇİZERE GÖNDER
 					"duration":  game.RoundDuration,
 				},
 			})
@@ -234,29 +257,52 @@ func (dge *DrawingGameEngine) selectRandomWord() string {
 
 // 💡 Yeni Metot: Tur Bitince Yapılacaklar
 func (dge *DrawingGameEngine) EndRound(game *Game, reason string) bool {
-	// Kilitler (Mutex) zaten GameHub tarafından tutuluyor olmalıdır.
-
 	fmt.Printf("EndRound called. Reason: %s. Current Round: %d\n", reason, game.TurnCount)
-	// game.Mutex.Lock()
-	// defer game.Mutex.Unlock()
-	// 1. Puanlama ve Durum Güncellemeleri buraya gelir.
-	// Örn: dge.calculateScores(game, reason)
-	artData, _ := game.ModeData.(*DrawArtData)
 
-	artData.RoundHistory[game.TurnCount] = artData.CurrentStrokes
-	// 2. Tur Sayısını Artırma
+	// Biten turun numarası:
+	endedRoundNum := game.TurnCount
+
+	artData, ok := game.ModeData.(*DrawArtData)
+	if !ok {
+		// Hata yönetimi burada olmalı
+		return false
+	}
+
+	// 1. **StartRound'da oluşturulan** RoundRecord kaydını al
+	// NOT: StartRound'da kelime ve ActivePlayer ayarlanmış olmalı.
+	record, exists := artData.RoundHistory[endedRoundNum]
+	if !exists {
+		// Eğer StartRound doğru çalışmadıysa (hiç olmamalı)
+		fmt.Println("HATA: Biten tur için RoundRecord bulunamadı!")
+		// ... hata işlemesi ...
+		return false
+	}
+
+	// 2. O anki (biten) turun CurrentStrokes verisini kayda ekle
+	record.AllStrokes = artData.CurrentStrokes
+
+	// 3. Güncellenmiş kaydı geri yaz (map'lerde gerekli)
+	artData.RoundHistory[endedRoundNum] = record
+
+	// --- ÖNEMLİ DÜZELTME SONU ---
+
+	// 4. Tur Sayısını Artırma
 	game.TurnCount++
 
-	// 3. Sıradaki Çizeri Ayarlama
+	// 5. Sıradaki Çizeri Ayarlama
 	game.ActivePlayer = dge.getNextDrawer(game) // sonraki çizeri belirle
+
+	// 6. Current verileri sıfırla (Yeni tur için)
 	artData.CurrentStrokes = []DrawingStroke{}
-	// 4. OYUN BİTİŞ KONTROLÜ
+	// artData.CurrentWord = "" // StartRound'da yeniden ayarlanacağı için bu zorunlu değil
+
+	// 7. OYUN BİTİŞ KONTROLÜ
 	if game.TurnCount > game.TotalRounds {
 		game.State = GameStateOver
 		return false // Oyun Bitti
 	}
 
-	// 5. OYUN DEVAM EDİYOR
+	// 8. OYUN DEVAM EDİYOR
 	return true // Yeni tura geçilmesi gerekiyor
 }
 
@@ -357,7 +403,7 @@ func (dge *DrawingGameEngine) SendFinalArtReport(game *Game) {
 	finalReport := make(map[string]interface{})
 
 	// Geçmişteki her tur için döngü
-	for roundNum, allStrokes := range artData.RoundHistory {
+	for roundNum, record := range artData.RoundHistory {
 
 		// Bu turdaki kelimeyi tahmin edebilmek için ek bir map tutulmalı
 		// Şu anki yapımızda CurrentWord'ü sadece StartRound'da belirliyoruz.
@@ -372,8 +418,8 @@ func (dge *DrawingGameEngine) SendFinalArtReport(game *Game) {
 
 		// Rapor objesini hazırla
 		roundReport := map[string]interface{}{
-			"word":    artData.CurrentWord,
-			"actions": allStrokes,
+			"word":    record.Word,
+			"actions": record.AllStrokes,
 		}
 
 		finalReport[fmt.Sprintf("round_%d", roundNum)] = roundReport

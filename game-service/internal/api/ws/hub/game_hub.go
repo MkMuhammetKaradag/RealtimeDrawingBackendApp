@@ -64,14 +64,6 @@ type Game struct {
 	Mutex               sync.RWMutex
 }
 
-// Game'e özel yapılar
-type DrawingGameData struct {
-	CurrentWord    string
-	CurrentDrawer  uuid.UUID
-	GuessedPlayers map[uuid.UUID]bool
-	CanvasData     string
-}
-
 type CommonAreaGameData struct {
 	CanvasData string
 }
