@@ -26,6 +26,12 @@ type RoundRecord struct {
 	DrawerID   uuid.UUID       // Bu turda kimin çizdiği
 	AllStrokes []DrawingStroke // Bu turdaki tüm vuruşlar (zaten saklıyor olabilirsiniz)
 }
+type DrawingStroke struct {
+	PlayerID uuid.UUID // Bu vuruşu yapan oyuncu
+	Data     string    // Vuruşa ait çizim verisi (genellikle JSON formatında)
+	// Canvas verisinin ne olduğu (örneğin renk, fırça boyutu, koordinatlar)
+	// client tarafında belirlenip string olarak buraya gelir.
+}
 
 func NewDrawingGameEngine(gameHub *GameHub) *DrawingGameEngine {
 	return &DrawingGameEngine{gameHub: gameHub}
@@ -92,7 +98,7 @@ func (dge *DrawingGameEngine) ProcessMove(game *Game, playerID uuid.UUID, moveDa
 			return fmt.Errorf("failed to marshal drawing data: %v", err)
 		}
 		drawingData, _ := game.ModeData.(*DrawArtData)
-		if !ok || drawingData == nil {
+		if drawingData == nil {
 			// Loglama eklemek isteyebilirsiniz: log.Printf("HATA: ModeData DrawArtData değil veya nil.")
 			return fmt.Errorf("oyun modu verisi eksik veya yanlış tipte")
 		}

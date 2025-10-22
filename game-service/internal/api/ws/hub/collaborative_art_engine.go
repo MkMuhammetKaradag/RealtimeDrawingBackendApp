@@ -11,19 +11,12 @@ import (
 	"github.com/google/uuid"
 )
 
-type DrawingStroke struct {
-	PlayerID uuid.UUID // Bu vuruşu yapan oyuncu
-	Data     string    // Vuruşa ait çizim verisi (genellikle JSON formatında)
-	// Canvas verisinin ne olduğu (örneğin renk, fırça boyutu, koordinatlar)
-	// client tarafında belirlenip string olarak buraya gelir.
-}
-
 // CollaborativeArtData, "Ortak Sanat Projesi" modunun özel verilerini tutar.
 type CollaborativeArtData struct {
 	CurrentWord string // Çizilen kelime (temamız)
 	// Tüm turların verisini saklayacak, Raporlama için anahtar yapı
-	RoundHistory   map[int][]DrawingStroke // Tur Numarası -> O turdaki TÜM vuruşlar
-	CurrentStrokes []DrawingStroke         // Mevcut turda yapılan vuruşlar
+	RoundHistory   map[int]RoundRecord // Tur Numarası -> O turdaki TÜM vuruşlar
+	CurrentStrokes []DrawingStroke     // Mevcut turda yapılan vuruşlar
 
 }
 
@@ -55,7 +48,7 @@ func (cae *CollaborativeArtEngine) InitGame(game *Game, players []*Player) error
 	// Özel verileri oluştur
 	artData := &CollaborativeArtData{
 		CurrentWord:    "",
-		RoundHistory:   make(map[int][]DrawingStroke), // Geçmişi saklamak için map oluştur
+		RoundHistory:   make(map[int]RoundRecord),
 		CurrentStrokes: []DrawingStroke{},
 	}
 	game.ModeData = artData
@@ -92,7 +85,10 @@ func (cae *CollaborativeArtEngine) ProcessMove(game *Game, playerID uuid.UUID, m
 		}
 
 		artData, _ := game.ModeData.(*CollaborativeArtData)
-
+		if artData == nil {
+			// Loglama eklemek isteyebilirsiniz: log.Printf("HATA: ModeData DrawArtData değil veya nil.")
+			return fmt.Errorf("oyun modu verisi eksik veya yanlış tipte")
+		}
 		newStroke := DrawingStroke{
 			PlayerID: playerID,
 			Data:     string(jsonData),
@@ -116,13 +112,25 @@ func (cae *CollaborativeArtEngine) ProcessMove(game *Game, playerID uuid.UUID, m
 func (cae *CollaborativeArtEngine) EndRound(game *Game, reason string) bool {
 	// game.Mutex.Lock()
 	// defer game.Mutex.Unlock()
+	endedRoundNum := game.TurnCount
+	artData, ok := game.ModeData.(*CollaborativeArtData)
+	if !ok {
+		fmt.Println("hata game mode bulunamadı ", game.ModeData)
+		// Hata yönetimi burada olmalı
+		return false
+	}
+	fmt.Printf("Ending collaborative art round %d  asrdata", endedRoundNum, artData.RoundHistory)
+	record, exists := artData.RoundHistory[endedRoundNum]
+	if !exists {
+		// Eğer StartRound doğru çalışmadıysa (hiç olmamalı)
+		fmt.Println("HATA: Biten tur için RoundRecord bulunamadı!", record)
+		// ... hata işlemesi ...
+		return false
+	}
 
-	artData, _ := game.ModeData.(*CollaborativeArtData)
-
-	// 🎯 Geçmişi Sakla
 	// Mevcut turdaki tüm vuruşları (CurrentStrokes) o tur numarasıyla (TurnCount) geçmişe kaydet.
-	artData.RoundHistory[game.TurnCount] = artData.CurrentStrokes
-	log.Printf("Round %d finished and strokes saved to history. Reason: %s", game.TurnCount, reason)
+	record.AllStrokes = artData.CurrentStrokes
+	artData.RoundHistory[endedRoundNum] = record
 
 	// Tur Sayısını Artır
 	game.TurnCount++
@@ -165,7 +173,7 @@ func (cae *CollaborativeArtEngine) SendFinalArtReport(game *Game) {
 	finalReport := make(map[string]interface{})
 
 	// Geçmişteki her tur için döngü
-	for roundNum, allStrokes := range artData.RoundHistory {
+	for roundNum, record := range artData.RoundHistory {
 
 		// Bu turdaki kelimeyi tahmin edebilmek için ek bir map tutulmalı
 		// Şu anki yapımızda CurrentWord'ü sadece StartRound'da belirliyoruz.
@@ -180,8 +188,8 @@ func (cae *CollaborativeArtEngine) SendFinalArtReport(game *Game) {
 
 		// Rapor objesini hazırla
 		roundReport := map[string]interface{}{
-			"word":    artData.CurrentWord,
-			"actions": allStrokes,
+			"word":    record.Word,
+			"actions": record.AllStrokes,
 		}
 
 		finalReport[fmt.Sprintf("round_%d", roundNum)] = roundReport
@@ -241,7 +249,18 @@ func (cae *CollaborativeArtEngine) StartRound(game *Game) error {
 
 	// 2. Kelime seçimi
 	// Bu, bu turda çizilecek temadır.
-	artData.CurrentWord = cae.selectRandomWord()
+	selectedWord := cae.selectRandomWord()
+	artData.CurrentWord = selectedWord
+	artData.CurrentStrokes = []DrawingStroke{}
+	currentRoundNum := game.TurnCount
+	artData.RoundHistory[currentRoundNum] = RoundRecord{
+		Word: selectedWord,
+		// ActivePlayer'ın doğru ayarlandığından emin olun!
+		// game.ActivePlayer, bu turu çizecek kişinin ID'si olmalı.
+		DrawerID: game.ActivePlayer,
+		// AllStrokes şimdilik boş kalabilir, Stroke'lar EndRound'da eklenecektir.
+		AllStrokes: []DrawingStroke{},
+	}
 	log.Printf("Selected word for collaborative art: %s", artData.CurrentWord)
 
 	// 3. Tüm oyunculara tur başlangıcını (gizli kelime ile) bildir
@@ -250,7 +269,7 @@ func (cae *CollaborativeArtEngine) StartRound(game *Game) error {
 			Type: "round_start_drawer",
 			Content: map[string]interface{}{
 				"drawer_id": p.UserID,
-				"word":      artData.CurrentWord,
+				"word":      selectedWord,
 				"duration":  game.RoundDuration,
 			},
 		})
