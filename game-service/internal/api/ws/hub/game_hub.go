@@ -578,7 +578,7 @@ func (g *GameHub) handleRoundEnd(roomID uuid.UUID, reason string) {
 
 		// Aktif oyunlardan kaldır.
 		delete(g.activeGames, roomID)
-		delete(g.roomSettings, roomID)
+		// delete(g.roomSettings, roomID)
 	}
 }
 func (g *GameHub) HandleGameMessage(roomID uuid.UUID, msg RoomManagerData) {
@@ -1034,7 +1034,7 @@ func (g *GameHub) handleEndGame(roomID uuid.UUID, msg RoomManagerData) {
 
 	// Oyunu aktif oyunlardan ve ayarlardan kaldır
 	delete(g.activeGames, roomID)
-	delete(g.roomSettings, roomID)
+	//delete(g.roomSettings, roomID)
 
 	g.mutex.Unlock()
 
